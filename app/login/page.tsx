@@ -7,6 +7,9 @@ import { useRouter } from "next/navigation";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
+  signOut,
+  reload,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
@@ -21,54 +24,124 @@ export default function LoginPage() {
   );
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  
+const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
 
-    setMessage("");
-    setLoading(true);
+  setMessage("");
+  setLoading(true);
 
-    try {
-      await signInWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
+  try {
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email.trim(),
+      password
+    );
 
-      router.replace("/dashboard");
-    } catch (error: unknown) {
-      const code =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error
-          ? String(error.code)
-          : "";
+    const user = userCredential.user;
 
-      let friendlyMessage =
-        "We couldn't sign you in. Please try again.";
+    await reload(user);
 
-      if (
-        code === "auth/invalid-credential" ||
-        code === "auth/wrong-password" ||
-        code === "auth/user-not-found"
-      ) {
-        friendlyMessage =
-          "Incorrect email or password. Please check your details.";
-      } else if (code === "auth/invalid-email") {
-        friendlyMessage = "Please enter a valid email address.";
-      } else if (code === "auth/too-many-requests") {
-        friendlyMessage =
-          "Too many attempts. Please wait a while before trying again.";
-      } else if (code === "auth/network-request-failed") {
-        friendlyMessage =
-          "Network error. Check your internet connection and try again.";
-      }
+    
+if (!user.emailVerified) {
+  await signOut(auth);
 
-      setMessage(friendlyMessage);
-      setMessageType("error");
-      setLoading(false);
+  setMessageType("error");
+  setMessage(
+    "Your email is not verified. Please check your inbox and spam folder, or use the Resend verification email option below."
+  );
+
+  return;
+}
+
+
+    router.replace("/dashboard");
+  } catch (error: unknown) {
+    console.error("LOGIN ERROR:", error);
+    const code =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error
+        ? String(error.code)
+        : "";
+
+    let friendlyMessage =
+      "We couldn't sign you in. Please try again.";
+
+    if (
+      code === "auth/invalid-credential" ||
+      code === "auth/wrong-password" ||
+      code === "auth/user-not-found"
+    ) {
+      friendlyMessage =
+        "Incorrect email or password. Please check your details.";
+    } else if (code === "auth/invalid-email") {
+      friendlyMessage = "Please enter a valid email address.";
+    } else if (code === "auth/too-many-requests") {
+      friendlyMessage =
+        "Too many attempts. Please wait a while before trying again.";
+    } else if (code === "auth/network-request-failed") {
+      friendlyMessage =
+        "Network error. Check your internet connection and try again.";
+    } else if (code === "auth/operation-not-allowed") {
+      friendlyMessage =
+        "This sign-in method is not enabled in Firebase.";
     }
-  };
+
+    setMessageType("error");
+    setMessage(friendlyMessage);
+  } finally {
+    setLoading(false);
+  }
+};
+const handleResendVerification = async () => {
+  if (!email.trim() || !password) {
+    setMessageType("error");
+    setMessage("Enter your email and password first.");
+    return;
+  }
+
+  setMessage("");
+  setResetLoading(true);
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email.trim(),
+      password
+    );
+
+    const user = userCredential.user;
+
+    await reload(user);
+
+    if (user.emailVerified) {
+      await signOut(auth);
+      setMessageType("success");
+      setMessage("Your email is already verified. You can sign in now.");
+      return;
+    }
+
+    await sendEmailVerification(user);
+    await signOut(auth);
+
+    setMessageType("success");
+    setMessage("Verification email sent. Please check your inbox and spam folder.");
+  } catch (error) {
+    console.error("RESEND VERIFICATION ERROR:", error);
+
+    setMessageType("error");
+    setMessage(
+      "Unable to send the verification email. Please check your details and try again later."
+    );
+  } finally {
+    setResetLoading(false);
+  }
+};
+
+
 
   const handlePasswordReset = async () => {
     const trimmedEmail = email.trim();
@@ -224,18 +297,77 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="Enter your password"
-                style={styles.input}
-                disabled={loading}
-              />
+              
+
+
+<div style={{ position: "relative", width: "100%" }}>
+  <input
+    id="password"
+    name="password"
+    type={showPassword ? "text" : "password"}
+    autoComplete="current-password"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    required
+    placeholder="Enter your password"
+    style={{ ...styles.input, paddingRight: "45px" }}
+    disabled={loading}
+  />
+
+  <button
+    type="button"
+    onClick={() => setShowPassword((previous) => !previous)}
+    aria-label={showPassword ? "Hide password" : "Show password"}
+    style={{
+      position: "absolute",
+      right: "12px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "transparent",
+      border: "none",
+      padding: "4px",
+      cursor: "pointer",
+      color: "#94a3b8",
+      display: "flex",
+      alignItems: "center",
+    }}
+  >
+    {showPassword ? (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 3l18 18" />
+        <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+        <path d="M9.9 5.2A11 11 0 0121 12a11.8 11.8 0 01-3.1 4.1" />
+        <path d="M6.2 6.2A12 12 0 003 12s3 7 9 7a9.7 9.7 0 004.2-.9" />
+      </svg>
+    ) : (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    )}
+  </button>
+</div>
+
+
+
             </div>
 
             {message && (
@@ -264,13 +396,33 @@ export default function LoginPage() {
             >
               {loading ? "Signing in..." : "Sign In →"}
             </button>
+            
+<button
+  type="button"
+  onClick={handleResendVerification}
+  disabled={loading || resetLoading}
+  style={styles.forgotButton}
+>
+  Resend verification email
+</button>
+
           </form>
 
-          <div style={styles.separator}>
-            <span />
-            <span style={styles.separatorText}>NEW TO SMART SPECTACLES?</span>
-            <span />
-          </div>
+          
+<div style={styles.separator}>
+  <span />
+  <span
+    style={{
+      ...styles.separatorText,
+      textAlign: "center",
+      flex: 1,
+    }}
+  >
+    NEW TO SMART SPECTACLES?
+  </span>
+  <span />
+</div>
+
 
           <p style={styles.signupText}>
             Don't have an account?{" "}

@@ -44,7 +44,7 @@ export default function ProfilePage() {
   const router = useRouter();
 
   const [name, setName] = useState("");
-  const [ageGroup, setAgeGroup] = useState("");
+  const [age, setAge] = useState("");
   const [region, setRegion] = useState("");
   const [screenTime, setScreenTime] = useState("");
   const [outdoorTime, setOutdoorTime] = useState("");
@@ -84,8 +84,8 @@ export default function ProfilePage() {
         if (typeof profile.name === "string") {
           setName(profile.name);
         }
-        if (typeof profile.ageGroup === "string") {
-          setAgeGroup(profile.ageGroup);
+        if (profile.age !== undefined && profile.age !== null) {
+        setAge(String(profile.age));
         }
         if (typeof profile.region === "string") {
           setRegion(profile.region);
@@ -164,7 +164,7 @@ export default function ProfilePage() {
         {
           profile: {
             name: name.trim(),
-            ageGroup,
+            age: Number(age),
             region: region.trim(),
             screenTime,
             outdoorTime,
@@ -322,23 +322,21 @@ export default function ProfilePage() {
               style={inputStyle}
             />
 
-            <label style={labelStyle} htmlFor="ageGroup">
-              Age group
-            </label>
-            <select
-              id="ageGroup"
-              value={ageGroup}
-              onChange={(e) => setAgeGroup(e.target.value)}
-              required
-              style={inputStyle}
-            >
-              <option value="">Select your age group</option>
-              <option value="under-18">Under 18</option>
-              <option value="18-25">18–25</option>
-              <option value="26-40">26–40</option>
-              <option value="41-60">41–60</option>
-              <option value="60-plus">60+</option>
-            </select>
+            <label style={labelStyle} htmlFor="age">
+  Age
+</label>
+<input
+  id="age"
+  type="number"
+  value={age}
+  onChange={(e) => setAge(e.target.value)}
+  required
+  min="1"
+  max="120"
+  step="1"
+  placeholder="Enter your age"
+  style={inputStyle}
+/>
 
             <label style={labelStyle} htmlFor="region">
               Region
@@ -475,18 +473,18 @@ export default function ProfilePage() {
             </div>
 
             <label style={labelStyle} htmlFor="sensitivity">
-              Warning sensitivity
-            </label>
-            <select
-              id="sensitivity"
-              value={sensitivity}
-              onChange={(e) => setSensitivity(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="low">Low — fewer warnings</option>
-              <option value="medium">Medium — balanced warnings</option>
-              <option value="high">High — more sensitive warnings</option>
-            </select>
+  Alert Frequency
+</label>
+<select
+  id="sensitivity"
+  value={sensitivity}
+  onChange={(e) => setSensitivity(e.target.value)}
+  style={inputStyle}
+>
+  <option value="low">Low — Fewer alerts</option>
+  <option value="medium">Medium — Balanced alerts</option>
+  <option value="high">High — More alerts</option>
+</select>
 
             <label style={labelStyle} htmlFor="alertType">
               Alert preference
