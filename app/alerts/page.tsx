@@ -15,7 +15,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 
 type Severity = "low" | "medium" | "high";
-type Category = "all" | "uv" | "light" | "gas" | "distance" | "other";
+type Category = "all" | "uv" | "light" | "gas" | "distance";
 type Period = "1h" | "24h" | "7d" | "30d" | "all" | "custom";
 type Tab = "notViewed" | "viewed";
 
@@ -47,7 +47,6 @@ const categories: { label: string; value: Category }[] = [
   { label: "Light Alerts", value: "light" },
   { label: "Gas Alerts", value: "gas" },
   { label: "Distance Alerts", value: "distance" },
-  { label: "Other Alerts", value: "other" },
 ];
 
 const periods: { label: string; value: Period }[] = [
@@ -95,7 +94,9 @@ function getCategory(sensor: string): Category {
     return "distance";
   }
 
-  return "other";
+  // Unclassified alerts remain visible under All Alerts, but there is no
+  // separate Other Alerts filter.
+  return "all";
 }
 
 function parseAlertDate(value: unknown): Date | null {
@@ -215,15 +216,36 @@ function FilterButton({
 
 function FilterGroup({
   title,
+  summary,
   children,
 }: {
   title: string;
+  summary: string;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div style={{ marginTop: 14 }}>
-      <p style={labelStyle}>{title}</p>
-      <div style={filterRowStyle}>{children}</div>
+    <div style={compactFilterWrapStyle}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        style={compactFilterButtonStyle}
+      >
+        <span style={{ minWidth: 0, textAlign: "left" }}>
+          <span style={compactFilterTitleStyle}>{title}</span>
+          <span style={compactFilterSummaryStyle}>{summary}</span>
+        </span>
+        <span aria-hidden="true" style={{ color: C.cyan, fontSize: 16 }}>
+          {open ? "−" : "＋"}
+        </span>
+      </button>
+      {open && (
+        <div style={compactFilterPanelStyle}>
+          <div style={filterRowStyle}>{children}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -236,7 +258,6 @@ function TimeFilter({
   endDate,
   setEndDate,
   accountCreated,
-  today,
 }: {
   period: Period;
   setPeriod: (period: Period) => void;
@@ -245,10 +266,18 @@ function TimeFilter({
   endDate: string;
   setEndDate: (date: string) => void;
   accountCreated: Date;
-  today: Date;
 }) {
+  const [today, setToday] = useState("");
+
+  useEffect(() => {
+    setToday(dateInputValue(new Date()));
+  }, []);
+
+  const selectedPeriodLabel =
+    periods.find((item) => item.value === period)?.label ?? "Last 1 hour";
+
   return (
-    <FilterGroup title="TIME PERIOD">
+    <FilterGroup title="TIME PERIOD" summary={selectedPeriodLabel}>
       {periods.map((item) => (
         <FilterButton
           key={item.value}
@@ -267,7 +296,7 @@ function TimeFilter({
               type="date"
               value={startDate}
               min={dateInputValue(accountCreated)}
-              max={dateInputValue(today)}
+              max={today}
               onChange={(event) => setStartDate(event.target.value)}
               style={dateInputStyle}
             />
@@ -279,7 +308,7 @@ function TimeFilter({
               type="date"
               value={endDate}
               min={startDate || dateInputValue(accountCreated)}
-              max={dateInputValue(today)}
+              max={today}
               onChange={(event) => setEndDate(event.target.value)}
               style={dateInputStyle}
             />
@@ -397,17 +426,6 @@ function AlertCard({
   );
 }
 
-function categoryColor(category: Exclude<Category, "all">) {
-  const colors: Record<Exclude<Category, "all">, string> = {
-    uv: "#c084fc",
-    light: "#60a5fa",
-    gas: "#fb923c",
-    distance: "#4ade80",
-    other: "#cbd5e1",
-  };
-  return colors[category];
-}
-
 function AlertGraph({
   alerts,
   start,
@@ -428,89 +446,114 @@ function AlertGraph({
   const bucketCount = 12;
   const duration = Math.max(1, end.getTime() - start.getTime());
   const bucketDuration = duration / bucketCount;
-  const graphCategories: Exclude<Category, "all">[] = [
-    "uv", "light", "gas", "distance", "other",
-  ];
+  const sensorColors = ["#67e8f9", "#fbbf24", "#a78bfa", "#4ade80", "#fb7185", "#60a5fa", "#f97316"];
 
-  const buckets = Array.from({ length: bucketCount }, () => ({
-    uv: 0, light: 0, gas: 0, distance: 0, other: 0,
+  // Create one series per sensor. When the category filter selects one sensor
+  // category, only the matching series appear because `alerts` is pre-filtered.
+  const sensorNames = Array.from(
+    new Set(alerts.map((alert) => alert.sensor.toUpperCase()))
+  ).sort();
+
+  const series = sensorNames.map((sensor, sensorIndex) => ({
+    sensor,
+    color: sensorColors[sensorIndex % sensorColors.length],
+    buckets: Array.from({ length: bucketCount }, () => 0),
   }));
 
   alerts.forEach((alert) => {
     if (!alert.timestamp) return;
     const elapsed = alert.timestamp.getTime() - start.getTime();
     const index = Math.floor(elapsed / bucketDuration);
-    const category = getCategory(alert.sensor);
-    if (index >= 0 && index < bucketCount && category !== "all") {
-      buckets[index][category]++;
-    }
+    if (index < 0 || index >= bucketCount) return;
+
+    const sensorIndex = sensorNames.indexOf(alert.sensor.toUpperCase());
+    if (sensorIndex >= 0) series[sensorIndex].buckets[index]++;
   });
 
-  const max = Math.max(1, ...buckets.map((bucket) =>
-    graphCategories.reduce((sum, category) => sum + bucket[category], 0)
-  ));
+  const max = Math.max(1, ...series.flatMap((item) => item.buckets));
   const x = (i: number) => left + (i / (bucketCount - 1)) * chartWidth;
   const y = (value: number) => top + chartHeight - (value / max) * chartHeight;
-  const pointString = (category: Exclude<Category, "all">) =>
-    buckets.map((bucket, i) => `${x(i)},${y(bucket[category])}`).join(" ");
+
   const intervalLabel = (i: number) =>
     new Date(start.getTime() + i * bucketDuration).toLocaleString(undefined, {
-      month: "short", day: "numeric", hour: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
     });
-
-  const categoryLabels: Record<Exclude<Category, "all">, string> = {
-    uv: "UV Alerts",
-    light: "Light Alerts",
-    gas: "Gas Alerts",
-    distance: "Distance Alerts",
-    other: "Other Alerts",
-  };
 
   return (
     <div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {graphCategories.map((category) => (
-          <span key={category} style={{
-            color: categoryColor(category), fontSize: 12, fontWeight: 700,
-          }}>
-            ● {categoryLabels[category]}
+        {series.map((item) => (
+          <span
+            key={item.sensor}
+            style={{ color: item.color, fontSize: 12, fontWeight: 700 }}
+          >
+            ● {item.sensor}
           </span>
         ))}
       </div>
+
       <div style={{ overflowX: "auto", marginTop: 12 }}>
-        <svg viewBox={`0 0 ${width} ${height}`} role="img"
-          aria-label="Viewed alerts over time by alert category"
-          style={{ width: "100%", minWidth: 520, display: "block" }}>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="Recorded alerts over time by sensor"
+          style={{ width: "100%", minWidth: 520, display: "block" }}
+        >
           {[0, 1, 2, 3, 4].map((step) => {
             const value = (max * step) / 4;
             const yy = y(value);
-            return <g key={step}>
-              <line x1={left} y1={yy} x2={width - right} y2={yy}
-                stroke={C.border} strokeDasharray="4 4" />
-              <text x={left - 9} y={yy + 4} fill={C.muted} fontSize="10"
-                textAnchor="end">{Math.round(value)}</text>
-            </g>;
+            return (
+              <g key={step}>
+                <line
+                  x1={left}
+                  y1={yy}
+                  x2={width - right}
+                  y2={yy}
+                  stroke={C.border}
+                  strokeDasharray="4 4"
+                />
+                <text x={left - 9} y={yy + 4} fill={C.muted} fontSize="10" textAnchor="end">
+                  {Math.round(value)}
+                </text>
+              </g>
+            );
           })}
-          {graphCategories.map((category) => (
-            <g key={category}>
-              <polyline points={pointString(category)} fill="none"
-                stroke={categoryColor(category)} strokeWidth="3"
-                strokeLinecap="round" strokeLinejoin="round" />
-              {buckets.map((bucket, i) => (
-                <circle key={`${category}-${i}`} cx={x(i)}
-                  cy={y(bucket[category])} r="3.5"
-                  fill={categoryColor(category)} />
+
+          {series.map((item) => (
+            <g key={item.sensor}>
+              <polyline
+                points={item.buckets.map((value, i) => `${x(i)},${y(value)}`).join(" ")}
+                fill="none"
+                stroke={item.color}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {item.buckets.map((value, i) => (
+                <circle
+                  key={`${item.sensor}-${i}`}
+                  cx={x(i)}
+                  cy={y(value)}
+                  r="3.5"
+                  fill={item.color}
+                />
               ))}
             </g>
           ))}
-          {buckets.map((_, i) => <text key={i} x={x(i)} y={height - 12}
-            fill={C.muted} fontSize="9" textAnchor="middle">
-            {i % 2 === 0 ? intervalLabel(i) : ""}
-          </text>)}
+
+          {Array.from({ length: bucketCount }, (_, i) => (
+            <text key={i} x={x(i)} y={height - 12} fill={C.muted} fontSize="9" textAnchor="middle">
+              {i % 2 === 0 ? intervalLabel(i) : ""}
+            </text>
+          ))}
         </svg>
       </div>
+
       <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
-        Each line represents a category of recorded alerts. Only saved alert events are included.
+        Alert counts grouped by sensor over time. Choose All Alerts to compare
+        all recorded sensor types, or select a category to focus on that sensor type.
       </p>
     </div>
   );
@@ -519,9 +562,17 @@ function AlertGraph({
 export default function AlertsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [clientNow, setClientNow] = useState<Date | null>(null);
+
+  // Read the current time after hydration, not during prerendering.
+  useEffect(() => {
+    setClientNow(new Date());
+  }, []);
+
+  // A deterministic fallback keeps the first render stable.
+  const rangeNow = clientNow ?? new Date(0);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [error, setError] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -546,8 +597,17 @@ export default function AlertsPage() {
   const [graphStart, setGraphStart] = useState("");
   const [graphEnd, setGraphEnd] = useState("");
 
+  // While the graph is open, changes to the Viewed tab's time range are
+  // reflected in the graph. The graph's own controls remain independently
+  // changeable until the Viewed tab's time range is changed again.
   useEffect(() => {
-    setCurrentTime(new Date());
+    if (!graphOpen) return;
+    setGraphPeriod(viewPeriod);
+    setGraphStart(viewStart);
+    setGraphEnd(viewEnd);
+  }, [graphOpen, viewPeriod, viewStart, viewEnd]);
+
+  useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
@@ -653,7 +713,7 @@ export default function AlertsPage() {
       accountCreated,
       startDate,
       endDate,
-      currentTime ?? accountCreated
+      rangeNow
     );
 
     return alerts.filter((alert) => {
@@ -685,8 +745,7 @@ export default function AlertsPage() {
   );
 
   const graphRange = getRange(
-    graphPeriod, accountCreated, graphStart, graphEnd,
-    currentTime ?? accountCreated
+    graphPeriod, accountCreated, graphStart, graphEnd, rangeNow
   );
 
   function renderCategories(
@@ -841,21 +900,32 @@ export default function AlertsPage() {
               : "Review saved alerts and explore the graph for this category."}
           </p>
 
-          <FilterGroup title="1. ALERT CATEGORY">
+          <div style={compactFiltersGridStyle}>
+          <FilterGroup
+            title="ALERT CATEGORY"
+            summary={categories.find((item) => item.value === (activeTab === "notViewed" ? notCategory : viewCategory))?.label ?? "All Alerts"}
+          >
             {renderCategories(
               activeTab === "notViewed" ? notCategory : viewCategory,
               activeTab === "notViewed" ? setNotCategory : setViewCategory
             )}
           </FilterGroup>
 
-          <FilterGroup title="2. SEVERITY">
+          <FilterGroup
+            title="SEVERITY"
+            summary={
+              (activeTab === "notViewed" ? notSeverity : viewSeverity) === "all"
+                ? "All severities"
+                : (activeTab === "notViewed" ? notSeverity : viewSeverity)[0].toUpperCase() +
+                  (activeTab === "notViewed" ? notSeverity : viewSeverity).slice(1)
+            }
+          >
             {renderSeverities(
               activeTab === "notViewed" ? notSeverity : viewSeverity,
               activeTab === "notViewed" ? setNotSeverity : setViewSeverity
             )}
           </FilterGroup>
 
-          <div style={{ marginTop: 22 }}>
             <TimeFilter
               period={activeTab === "notViewed" ? notPeriod : viewPeriod}
               setPeriod={activeTab === "notViewed" ? setNotPeriod : setViewPeriod}
@@ -864,7 +934,6 @@ export default function AlertsPage() {
               endDate={activeTab === "notViewed" ? notEnd : viewEnd}
               setEndDate={activeTab === "notViewed" ? setNotEnd : setViewEnd}
               accountCreated={accountCreated}
-              today={currentTime ?? accountCreated}
             />
           </div>
 
@@ -872,7 +941,14 @@ export default function AlertsPage() {
             <div style={{ marginTop: 24 }}>
               <button
                 type="button"
-                onClick={() => setGraphOpen((open) => !open)}
+                onClick={() => {
+                  if (!graphOpen) {
+                    setGraphPeriod(viewPeriod);
+                    setGraphStart(viewStart);
+                    setGraphEnd(viewEnd);
+                  }
+                  setGraphOpen((open) => !open);
+                }}
                 style={primaryButtonStyle}
               >
                 {graphOpen ? "Hide Graph ↑" : "View Graph ↗"}
@@ -894,7 +970,6 @@ export default function AlertsPage() {
                     endDate={graphEnd}
                     setEndDate={setGraphEnd}
                     accountCreated={accountCreated}
-                    today={currentTime ?? accountCreated}
                   />
 
                   <div style={{ marginTop: 20 }}>
@@ -1013,6 +1088,62 @@ const filterRowStyle: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 6,
+};
+
+const compactFiltersGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 10,
+  alignItems: "start",
+  marginTop: 18,
+};
+
+const compactFilterWrapStyle: React.CSSProperties = {
+  minWidth: 0,
+  position: "relative",
+};
+
+const compactFilterButtonStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "12px 13px",
+  background: "#102239",
+  color: C.text,
+  border: `1px solid ${C.border}`,
+  borderRadius: 11,
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const compactFilterTitleStyle: React.CSSProperties = {
+  display: "block",
+  color: C.muted,
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 1,
+  marginBottom: 5,
+};
+
+const compactFilterSummaryStyle: React.CSSProperties = {
+  display: "block",
+  color: C.text,
+  fontSize: 13,
+  fontWeight: 700,
+  overflowWrap: "anywhere",
+};
+
+const compactFilterPanelStyle: React.CSSProperties = {
+  marginTop: 7,
+  padding: 12,
+  background: "#081322",
+  border: `1px solid ${C.border}`,
+  borderRadius: 11,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
 };
 
 const dateGridStyle: React.CSSProperties = {
