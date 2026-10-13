@@ -47,6 +47,8 @@ type SensorData = {
 
   distance?: number;
 
+  lastSeen?: number | string;
+
   warnings?: Partial<Record<SensorKey, boolean>>;
 
 };
@@ -314,10 +316,12 @@ const userRef = doc(db, "users", currentUser.uid);
 
     if (loading || !user) return;
 
-    const sensorRef = ref(
+   
+const sensorRef = ref(
   realtimeDb,
-  "devices/astha-spectacles-001/current"
+  "devices/muskan-001/current"
 );
+
 
     const unsubscribe = onValue(
 
