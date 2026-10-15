@@ -1,8 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import {
+  onAuthStateChanged,
+  User,
+} from "firebase/auth";
+import { auth, authPersistence } from "@/lib/firebase";
 
 type AuthContextType = {
   user: User | null;
@@ -23,12 +31,40 @@ export function AuthProvider({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
+    let unsubscribe = () => {};
+    let active = true;
 
-    return () => unsubscribe();
+    const initializeAuth = async () => {
+      try {
+        await authPersistence;
+
+        if (!active) return;
+
+        unsubscribe = onAuthStateChanged(
+          auth,
+          (currentUser) => {
+            setUser(currentUser);
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Authentication error:", error);
+            setUser(null);
+            setLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error("Authentication initialization failed:", error);
+        setUser(null);
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   return (

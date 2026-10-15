@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "../auth-provider";
 import {
   collection,
   onSnapshot,
@@ -12,7 +13,7 @@ import {
   doc,
   serverTimestamp,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 
 type Severity = "low" | "medium" | "high";
 type StatusFilter = "all" | "pending" | "acknowledged";
@@ -107,6 +108,8 @@ function formatTimestamp(date: Date | null) {
 }
 
 export default function AlertsPage() {
+  const { user, loading: authLoading } = useAuth();
+
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,69 +120,66 @@ export default function AlertsPage() {
     useState<SeverityFilter>("all");
 
   useEffect(() => {
-    const user = auth.currentUser;
+  if (authLoading) return;
 
-    if (!user) {
-      setError("Please log in to view your alerts.");
+  if (!user) {
+    setError("Please log in to view your alerts.");
+    setLoading(false);
+    return;
+  }
+
+  setLoading(true);
+  setError("");
+
+  const alertsQuery = query(
+    collection(db, "users", user.uid, "alerts"),
+    orderBy("timestamp", "desc")
+  );
+
+  const unsubscribe = onSnapshot(
+    alertsQuery,
+    (snapshot) => {
+      const records: AlertRecord[] = snapshot.docs.map((alertDoc) => {
+        const data = alertDoc.data();
+
+        const severity: Severity =
+          data.severity === "high" ||
+          data.severity === "medium" ||
+          data.severity === "low"
+            ? data.severity
+            : "low";
+
+        return {
+          id: alertDoc.id,
+          sensor: data.sensor ?? "unknown",
+          value: typeof data.value === "number" ? data.value : null,
+          message: data.message ?? "Sensor alert",
+          severity,
+          timestamp: data.timestamp?.toDate
+            ? data.timestamp.toDate()
+            : null,
+          acknowledged: data.acknowledged === true,
+        };
+      });
+
+      setAlerts(records);
       setLoading(false);
-      return;
+      setError("");
+    },
+    (snapshotError) => {
+      console.error("Error loading alerts:", snapshotError);
+      setError(
+        "Unable to load alerts. Please check your connection and try again."
+      );
+      setLoading(false);
     }
+  );
 
-    const alertsQuery = query(
-      collection(db, "users", user.uid, "alerts"),
-      orderBy("timestamp", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      alertsQuery,
-      (snapshot) => {
-        const records: AlertRecord[] = snapshot.docs.map(
-          (alertDoc) => {
-            const data = alertDoc.data();
-
-            const severity: Severity =
-              data.severity === "high" ||
-              data.severity === "medium" ||
-              data.severity === "low"
-                ? data.severity
-                : "low";
-
-            return {
-              id: alertDoc.id,
-              sensor: data.sensor ?? "unknown",
-              value:
-                typeof data.value === "number"
-                  ? data.value
-                  : null,
-              message: data.message ?? "Sensor alert",
-              severity,
-              timestamp: data.timestamp?.toDate
-                ? data.timestamp.toDate()
-                : null,
-              acknowledged: data.acknowledged === true,
-            };
-          }
-        );
-
-        setAlerts(records);
-        setLoading(false);
-        setError("");
-      },
-      (snapshotError) => {
-        console.error("Error loading alerts:", snapshotError);
-        setError(
-          "Unable to load alerts. Please check your connection and try again."
-        );
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+  return () => unsubscribe();
+}, [user, authLoading]);
 
   async function acknowledgeAlert(alertId: string) {
-    const user = auth.currentUser;
-
+   
     if (!user) {
       setError("Please log in to acknowledge alerts.");
       return;
@@ -255,8 +255,18 @@ export default function AlertsPage() {
     },
   ];
 
+  
+  if (authLoading) {
+    return <main style={pageStyle}>Checking your account...</main>;
+  }
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <main style={pageStyle}>
+
       <div
         style={{
           maxWidth: "1100px",

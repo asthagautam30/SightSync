@@ -1,10 +1,120 @@
+
 @import "tailwindcss";
 
+/* Default theme: Soft Green Light — Calm Botanical */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --background: #E9E8DF;
+  --surface: #F5F3EB;
+  --foreground: #26352D;
+  --muted-foreground: #536157;
+  --accent: #496653;
+  --accent-foreground: #FFFFFF;
+  --border: #C3C9BA;
+  --focus-ring: #365541;
+
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: var(--font-geist-mono);
 }
 
+/* Soft Green Dark — unchanged */
+:root[data-theme="green-dark"] {
+  color-scheme: dark;
+
+  --background: #202820;
+  --surface: #2D382D;
+  --foreground: #E8EEE5;
+  --muted-foreground: #C4D0C0;
+  --accent: #A8D4A0;
+  --accent-foreground: #172117;
+  --border: #566651;
+  --focus-ring: #C5E8BE;
+}
+
+/* Warm Peach Light — Refined Ivory & Terracotta
+:root[data-theme="peach-light"] {
+  color-scheme: light;
+
+  --background: #EAE2D9;
+  --surface: #F5EFE8;
+  --foreground: #352B26;
+  --muted-foreground: #65564C;
+  --accent: #80513F;
+  --accent-foreground: #FFFFFF;
+  --border: #CBB9AA;
+  --focus-ring: #70432F;
+} */
+ /* Warm Lavender Light — Elegant Lavender & Ivory */
+:root[data-theme="peach-light"] {
+  color-scheme: light;
+
+  --background: #E8E5EF;
+  --surface: #F7F5FA;
+  --foreground: #302B3B;
+  --muted-foreground: #625B70;
+  --accent: #66527F;
+  --accent-foreground: #FFFFFF;
+  --border: #C9C1D6;
+  --focus-ring: #514064;
+}
+
+/* Warm Peach Dark — unchanged */
+:root[data-theme="peach-dark"] {
+  color-scheme: dark;
+
+  --background: #2C2521;
+  --surface: #39302A;
+  --foreground: #F0E5DA;
+  --muted-foreground: #D3C1B1;
+  --accent: #E5BE91;
+  --accent-foreground: #29231E;
+  --border: #68564A;
+  --focus-ring: #F2D2AB;
+}
+
+/* Soft Stone Light — unchanged */
+/* :root[data-theme="stone-light"] {
+  color-scheme: light;
+
+  --background: #E8E6E0;
+  --surface: #F5F3EE;
+  --foreground: #292D2A;
+  --muted-foreground: #565B55;
+  --accent: #505D54;
+  --accent-foreground: #FFFFFF;
+  --border: #C4C5BC;
+  --focus-ring: #39463D;
+} */
+
+/* Soft Stone Light — Warm Sand & Charcoal */
+:root[data-theme="stone-light"] {
+  color-scheme: light;
+
+  --background: #E9DFD2;
+  --surface: #F8F2E9;
+  --foreground: #39332D;
+  --muted-foreground: #6B6055;
+  --accent: #80684F;
+  --accent-foreground: #FFFFFF;
+  --border: #D0BEAA;
+  --focus-ring: #66503B;
+}
+/* Slate Dark — unchanged */
+:root[data-theme="slate-dark"] {
+  color-scheme: dark;
+
+  --background: #252832;
+  --surface: #303642;
+  --foreground: #E6E7EB;
+  --muted-foreground: #C5CAD5;
+  --accent: #B8C4DC;
+  --accent-foreground: #202431;
+  --border: #555D6C;
+  --focus-ring: #D4DDF0;
+}
+
+/* Map existing Tailwind background and text tokens */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,15 +122,33 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Apply theme colours to the whole page */
+html {
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Accessible keyboard focus */
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
