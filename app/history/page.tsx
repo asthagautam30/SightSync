@@ -25,16 +25,24 @@ import {
 import { useAuth } from "../auth-provider";
 import { db } from "@/lib/firebase";
 
+type SensorValue = number | null | undefined;
+
 type SensorReading = {
   id: string;
-  uv?: number | null;
-  gas?: number | null;
-  light?: number | null;
-  distance?: number | null;
-  timestamp?: Timestamp | null;
+  uv?: SensorValue;
+  gas?: SensorValue;
+  light?: SensorValue;
+  distance?: SensorValue;
+  timestamp?: unknown;
 };
 
 type RangeOption = "1h" | "24h" | "7d";
+
+type SensorKey = "uv" | "gas" | "light" | "distance";
+
+type ChartReading = SensorReading & {
+  chartTime: number;
+};
 
 const RANGE_OPTIONS: { label: string; value: RangeOption }[] = [
   { label: "Last hour", value: "1h" },
@@ -42,12 +50,16 @@ const RANGE_OPTIONS: { label: string; value: RangeOption }[] = [
   { label: "Last 7 days", value: "7d" },
 ];
 
-const SENSOR_CONFIG = [
+const SENSOR_CONFIG: {
+  key: SensorKey;
+  label: string;
+  unit: string;
+}[] = [
   { key: "uv", label: "UV Sensor Reading", unit: "" },
   { key: "gas", label: "Gas / Smoke Reading", unit: "" },
   { key: "light", label: "Light Level", unit: " lux" },
   { key: "distance", label: "Distance", unit: " cm" },
-] as const;
+];
 
 const colors = {
   background: "#050b14",
@@ -139,15 +151,102 @@ const errorStyle: React.CSSProperties = {
   color: "#fecaca",
 };
 
-function getDuration(range: RangeOption) {
+function getDuration(range: RangeOption): number {
   if (range === "1h") return 60 * 60 * 1000;
   if (range === "24h") return 24 * 60 * 60 * 1000;
   return 7 * 24 * 60 * 60 * 1000;
 }
 
-function formatValue(value: number | undefined, unit: string) {
-  if (value === undefined || !Number.isFinite(value)) return "—";
+function formatValue(
+  value: number | undefined,
+  unit: string
+): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
   return `${Number(value.toFixed(2))}${unit}`;
+}
+
+function isFiniteSensorValue(
+  value: unknown
+): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Converts supported timestamp formats into a valid Date.
+ * Invalid or missing timestamps return null.
+ */
+function getSafeTimestamp(value: unknown): Date | null {
+  if (value == null) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof value.toDate === "function"
+  ) {
+    try {
+      const date: unknown = value.toDate();
+
+      if (
+        date instanceof Date &&
+        !Number.isNaN(date.getTime())
+      ) {
+        return date;
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number"
+  ) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function getValidValues(
+  readings: SensorReading[],
+  key: SensorKey
+): number[] {
+  return readings
+    .map((reading) => reading[key])
+    .filter(isFiniteSensorValue);
+}
+
+/**
+ * Readings are stored in chronological order.
+ * Search backward so "Latest" is the newest record containing
+ * a valid numeric value for this particular sensor.
+ */
+function getLatestValue(
+  readings: SensorReading[],
+  key: SensorKey
+): number | undefined {
+  for (let index = readings.length - 1; index >= 0; index--) {
+    const value = readings[index][key];
+
+    if (isFiniteSensorValue(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 export default function HistoryPage() {
@@ -161,8 +260,18 @@ export default function HistoryPage() {
   const [windowEnd, setWindowEnd] = useState(0);
 
   useEffect(() => {
+  const updateWindow = () => {
     setWindowEnd(Date.now());
-  }, [range]);
+  };
+
+  updateWindow();
+
+  const intervalId = window.setInterval(updateWindow, 60_000);
+
+  return () => {
+    window.clearInterval(intervalId);
+  };
+}, [range]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -171,7 +280,9 @@ export default function HistoryPage() {
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (loading || !user || windowEnd === 0) return;
+    if (loading || !user || windowEnd === 0) {
+      return;
+    }
 
     setLoadingHistory(true);
     setError("");
@@ -204,20 +315,28 @@ export default function HistoryPage() {
     const unsubscribe = onSnapshot(
       historyQuery,
       (snapshot) => {
-        const savedReadings = snapshot.docs.map((document) => ({
-          id: document.id,
-          ...document.data(),
-        })) as SensorReading[];
+        const savedReadings: SensorReading[] = snapshot.docs.map(
+          (document) => ({
+            ...document.data(),
+            id: document.id,
+          }) as SensorReading
+        );
 
+        // Firestore returns descending order. Reverse it so
+        // charts and statistics process oldest to newest.
         savedReadings.reverse();
+
         setReadings(savedReadings);
         setLoadingHistory(false);
+        setError("");
       },
       (err) => {
         console.error("Failed to load sensor history:", err);
+
         setError(
           "Could not load sensor history. Please check your connection and try again."
         );
+
         setLoadingHistory(false);
       }
     );
@@ -239,12 +358,21 @@ export default function HistoryPage() {
 
   const windowStart = windowEnd - getDuration(range);
 
-  const chartData = readings
-    .filter((reading) => reading.timestamp)
-    .map((reading) => ({
-      ...reading,
-      chartTime: reading.timestamp!.toDate().getTime(),
-    }));
+  // Invalid timestamps are safely excluded from chart data.
+  const chartData: ChartReading[] = readings.flatMap((reading) => {
+    const date = getSafeTimestamp(reading.timestamp);
+
+    if (!date) {
+      return [];
+    }
+
+    return [
+      {
+        ...reading,
+        chartTime: date.getTime(),
+      },
+    ];
+  });
 
   return (
     <main style={pageStyle}>
@@ -307,6 +435,7 @@ export default function HistoryPage() {
                   type="button"
                   key={option.value}
                   onClick={() => setRange(option.value)}
+                  aria-pressed={active}
                   style={{
                     ...buttonStyle,
                     background: active ? colors.cyan : "#102239",
@@ -385,23 +514,15 @@ export default function HistoryPage() {
                   marginBottom: "20px",
                 }}
               >
-                Calculated from actual readings in the selected time range.
+                Calculated from actual numeric readings in the selected
+                time range. Latest shows the newest valid reading for
+                each sensor.
               </p>
 
               <div style={statsGridStyle}>
                 {SENSOR_CONFIG.map((sensor) => {
-                  const values = readings
-                    .map((reading) => reading[sensor.key])
-                    .filter(
-                      (value): value is number =>
-                        typeof value === "number" &&
-                        Number.isFinite(value)
-                    );
-
-                  const latest =
-                    values.length > 0
-                      ? values[values.length - 1]
-                      : undefined;
+                  const values = getValidValues(readings, sensor.key);
+                  const latest = getLatestValue(readings, sensor.key);
 
                   const minimum =
                     values.length > 0
@@ -419,6 +540,13 @@ export default function HistoryPage() {
                         values.length
                       : undefined;
 
+                  const stats = [
+                    { label: "Latest", value: latest },
+                    { label: "Minimum", value: minimum },
+                    { label: "Maximum", value: maximum },
+                    { label: "Average", value: average },
+                  ];
+
                   return (
                     <div key={sensor.key} style={statCardStyle}>
                       <h3
@@ -431,12 +559,7 @@ export default function HistoryPage() {
                         {sensor.label}
                       </h3>
 
-                      {[
-                        { label: "Latest", value: latest },
-                        { label: "Minimum", value: minimum },
-                        { label: "Maximum", value: maximum },
-                        { label: "Average", value: average },
-                      ].map((stat) => (
+                      {stats.map((stat) => (
                         <p
                           key={stat.label}
                           style={{
@@ -471,10 +594,8 @@ export default function HistoryPage() {
             </section>
 
             {SENSOR_CONFIG.map((sensor) => {
-              const sensorData = chartData.filter(
-                (reading) =>
-                  typeof reading[sensor.key] === "number" &&
-                  Number.isFinite(reading[sensor.key])
+              const sensorData = chartData.filter((reading) =>
+                isFiniteSensorValue(reading[sensor.key])
               );
 
               return (
@@ -491,7 +612,8 @@ export default function HistoryPage() {
 
                   {sensorData.length === 0 ? (
                     <p style={{ color: colors.muted }}>
-                      No numeric readings available for this sensor.
+                      No numeric readings with valid timestamps are
+                      available for this sensor.
                     </p>
                   ) : (
                     <div style={{ width: "100%", height: 320 }}>
@@ -516,18 +638,27 @@ export default function HistoryPage() {
                             scale="time"
                             domain={[windowStart, windowEnd]}
                             allowDataOverflow
-                            tick={{ fontSize: 11, fill: colors.muted }}
+                            tick={{
+                              fontSize: 11,
+                              fill: colors.muted,
+                            }}
                             tickLine={false}
-                            axisLine={{ stroke: colors.cardBorder }}
+                            axisLine={{
+                              stroke: colors.cardBorder,
+                            }}
                             minTickGap={35}
                             tickFormatter={(value) =>
                               new Date(Number(value)).toLocaleString(
                                 [],
                                 {
                                   month:
-                                    range === "7d" ? "short" : undefined,
+                                    range === "7d"
+                                      ? "short"
+                                      : undefined,
                                   day:
-                                    range === "7d" ? "numeric" : undefined,
+                                    range === "7d"
+                                      ? "numeric"
+                                      : undefined,
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 }
@@ -537,9 +668,14 @@ export default function HistoryPage() {
 
                           <YAxis
                             width={65}
-                            tick={{ fontSize: 12, fill: colors.muted }}
+                            tick={{
+                              fontSize: 12,
+                              fill: colors.muted,
+                            }}
                             tickLine={false}
-                            axisLine={{ stroke: colors.cardBorder }}
+                            axisLine={{
+                              stroke: colors.cardBorder,
+                            }}
                             domain={["auto", "auto"]}
                           />
 

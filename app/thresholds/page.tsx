@@ -304,7 +304,7 @@ export default function ThresholdSettingsPage() {
                       type="number"
                       min="0.01"
                       step="any"
-                      value={values[sensor]}
+                      value={mode === "default" ? DEFAULT_VALUES[sensor] : values[sensor]}
                       disabled={mode === "default"}
                       onChange={(event) =>
                         updateValue(sensor, event.target.value)
@@ -350,9 +350,9 @@ export default function ThresholdSettingsPage() {
           </button>
 
           <p style={footerNoteStyle}>
-            Your settings are saved to your signed-in user's Firestore
-            document. This page does not yet change the dashboard's
-            threshold calculations; we'll connect them in the next step.
+            Your selected thresholds are saved to your profile and used by the
+            dashboard to evaluate sensor readings. These values are for prototype
+            testing only and are not medically validated safety limits.
           </p>
         </form>
       </div>

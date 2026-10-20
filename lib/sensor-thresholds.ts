@@ -1,3 +1,4 @@
+
 export type SensorKey = "uv" | "gas" | "light" | "distance";
 
 export type SensorThreshold = {
@@ -24,18 +25,21 @@ export const SENSOR_THRESHOLDS: Record<SensorKey, SensorThreshold> = {
     warningAbove: DEFAULT_THRESHOLD_VALUES.uv,
     description: "TEST ONLY: Not a calibrated UV index.",
   },
+
   gas: {
     label: "Gas / Smoke (MQ-135)",
     unit: " test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.gas,
     description: "TEST ONLY: Not a calibrated gas concentration.",
   },
+
   light: {
     label: "Light Sensor (BH1750 / GY-302)",
     unit: " lux",
     warningAbove: DEFAULT_THRESHOLD_VALUES.light,
     description: "TEST ONLY: Not a validated harmful-light limit.",
   },
+
   distance: {
     label: "Distance Sensor (HC-SR04)",
     unit: " cm",
@@ -44,18 +48,58 @@ export const SENSOR_THRESHOLDS: Record<SensorKey, SensorThreshold> = {
   },
 };
 
+/**
+ * Returns true only for finite, positive threshold values.
+ */
+function isValidThreshold(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0
+  );
+}
+
+/**
+ * Returns the active threshold values.
+ * Invalid, missing, zero, and negative custom values fall back
+ * to the corresponding defaults.
+ */
 export function getActiveThresholds(
   customValues?: Partial<ThresholdValues> | null
 ): ThresholdValues {
+  function validOrDefault(
+    value: unknown,
+    fallback: number
+  ): number {
+    return isValidThreshold(value) ? value : fallback;
+  }
+
   return {
-    uv: customValues?.uv ?? DEFAULT_THRESHOLD_VALUES.uv,
-    gas: customValues?.gas ?? DEFAULT_THRESHOLD_VALUES.gas,
-    light: customValues?.light ?? DEFAULT_THRESHOLD_VALUES.light,
-    distance:
-      customValues?.distance ?? DEFAULT_THRESHOLD_VALUES.distance,
+    uv: validOrDefault(
+      customValues?.uv,
+      DEFAULT_THRESHOLD_VALUES.uv
+    ),
+
+    gas: validOrDefault(
+      customValues?.gas,
+      DEFAULT_THRESHOLD_VALUES.gas
+    ),
+
+    light: validOrDefault(
+      customValues?.light,
+      DEFAULT_THRESHOLD_VALUES.light
+    ),
+
+    distance: validOrDefault(
+      customValues?.distance,
+      DEFAULT_THRESHOLD_VALUES.distance
+    ),
   };
 }
 
+/**
+ * Checks whether a sensor has a configured default warning direction.
+ */
 export function isThresholdConfigured(sensor: SensorKey): boolean {
   return (
     SENSOR_THRESHOLDS[sensor].warningAbove !== undefined ||
@@ -63,12 +107,25 @@ export function isThresholdConfigured(sensor: SensorKey): boolean {
   );
 }
 
+/**
+ * Returns:
+ * - true when the threshold is exceeded
+ * - false when the reading is within the threshold
+ * - null when the reading is missing or invalid
+ *
+ * Distance warns below its threshold.
+ * UV, gas, and light warn above their thresholds.
+ */
 export function checkThreshold(
   sensor: SensorKey,
   value: number | null,
   thresholds?: Partial<ThresholdValues> | null
 ): boolean | null {
-  if (value === null || !Number.isFinite(value)) {
+  if (
+    value === null ||
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
     return null;
   }
 

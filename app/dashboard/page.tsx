@@ -1,7 +1,17 @@
 "use client";
 
 import { doc, getDoc } from "firebase/firestore";
+
 import { getSafetyPrecaution } from "@/lib/safety-precautions";
+
+import {
+  getNotificationPermission,
+  getNotificationSupport,
+  registerNotificationServiceWorker,
+  requestNotificationPermission,
+  showNotification,
+  type NotificationSupport,
+} from "@/lib/notifications";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -47,9 +57,24 @@ type SensorData = {
 
   distance?: number;
 
-  lastSeen?: number | string;
-
   warnings?: Partial<Record<SensorKey, boolean>>;
+  lastSeen?: number;
+  ai?: {
+    object?: string;
+    objectDetected?: boolean;
+    viewing?: boolean;
+    viewingTime?: number;
+    breakTime?: number;
+    windowElapsed?: number;
+    distance?: number | null;
+    tooCloseWarning?: boolean;
+    viewingTimeWarning?: boolean;
+    warning?: boolean;
+    warningType?: "none" | "too_close" | "extended_viewing" | string;
+    warningId?: string | null;
+    alertMessage?: string;
+    updatedAt?: number;
+  };
 
 };
 
@@ -125,6 +150,84 @@ const SENSOR_DETAILS: {
 
 ];
 
+function notifySafetyWarning({
+  sensor,
+  value,
+  threshold,
+  profile,
+  detail,
+  thresholdExceeded,
+}: {
+  sensor: (typeof SENSOR_DETAILS)[number];
+  value: number | null;
+  threshold: number;
+  profile: {
+    screenTime?: string;
+    outdoorTime?: string;
+    environment?: string;
+    warningSensitivity?: string;
+  } | null;
+  detail: string;
+  thresholdExceeded: boolean;
+}) {
+  const precaution = getSafetyPrecaution({
+    sensor: sensor.key,
+    value,
+    threshold,
+    exceeded: thresholdExceeded,
+    profile,
+  });
+
+  const fallbackActions: Record<SensorKey, string> = {
+    uv: "Move into shade or indoors, and use suitable UV protection.",
+    gas: "Move away from the suspected source to fresh air. Seek help if symptoms or a strong gas smell occur.",
+    light: "Reduce screen or light brightness, avoid staring into intense light, and take a short eye break.",
+    distance: "Check your surroundings and increase the distance from the nearby object if needed.",
+  };
+
+  const bodyParts = [
+    detail,
+    precaution?.message,
+    precaution?.action
+      ? `Recommended action: ${precaution.action}`
+      : `Recommended action: ${fallbackActions[sensor.key]}`,
+  ].filter(Boolean);
+
+  void showNotification(`Smart Spectacles: ${sensor.title} warning`, {
+    body: bodyParts.join("\n\n"),
+    tag: `smart-spectacles-${sensor.key}`,
+  });
+}
+
+function getVisualComfortDetails(ai: NonNullable<SensorData["ai"]>) {
+  const warningType = ai.warningType || "none";
+
+  // Only name objects supported by the current detector. If object data is
+  // missing or unrecognized, keep the alert generic rather than guessing.
+  const normalizedObject = (ai.object ?? "").trim().toLowerCase();
+  const objectLabel =
+    normalizedObject === "cell phone" || normalizedObject === "cellphone"
+      ? "Cell Phone"
+      : normalizedObject === "book"
+        ? "Book"
+        : normalizedObject === "laptop"
+          ? "Laptop"
+          : null;
+
+  return {
+    warningType,
+    message:
+      warningType === "too_close"
+        ? objectLabel
+          ? `Object Too Close — ${objectLabel}`
+          : "Object Too Close"
+        : objectLabel
+          ? `Extended Viewing Time — ${objectLabel}`
+          : "Extended Viewing Time",
+    value: typeof ai.distance === "number" ? ai.distance : null,
+  };
+}
+
 export default function DashboardPage() {
 
   const router = useRouter();
@@ -132,20 +235,31 @@ export default function DashboardPage() {
   const { user, loading } = useAuth();
 
   const [data, setData] = useState<SensorData | null>(null);
+
 const [statusTime, setStatusTime] = useState(0);
 
 useEffect(() => {
+
   const intervalId = window.setInterval(() => {
+
     setStatusTime(Date.now());
+
   }, 1000);
 
   return () => window.clearInterval(intervalId);
+
 }, []);
+
   const [safetyProfile, setSafetyProfile] = useState<{
+
   screenTime?: string;
+
   outdoorTime?: string;
+
   environment?: string;
+
   warningSensitivity?: string;
+
 } | null>(null);
 
   const [lastUpdate, setLastUpdate] = useState("Waiting for readings");
@@ -162,6 +276,73 @@ useEffect(() => {
 
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | NotificationSupport
+  >("default");
+
+  const [notificationMessage, setNotificationMessage] = useState("");
+
+  useEffect(() => {
+    const support = getNotificationSupport();
+    if (support !== "supported") {
+      setNotificationPermission(support);
+      return;
+    }
+
+    // Register the service worker up front. Mobile browsers require it for
+    // notifications, and it also handles clicks on a notification.
+    void registerNotificationServiceWorker();
+    setNotificationPermission(getNotificationPermission() ?? "default");
+  }, []);
+
+  const enableNotifications = async () => {
+    const support = getNotificationSupport();
+    if (support !== "supported") {
+      setNotificationPermission(support);
+      return;
+    }
+
+    try {
+      const permission =
+        (await requestNotificationPermission()) ??
+        getNotificationPermission();
+
+      if (!permission) {
+        setNotificationPermission("unsupported");
+        return;
+      }
+
+      setNotificationPermission(permission);
+      setNotificationMessage("");
+
+      if (permission === "granted") {
+        const shown = await showNotification(
+          "Smart Spectacles notifications are working",
+          {
+            body: "You will be notified when a new sensor warning is detected.",
+            tag: "smart-spectacles-notification-test",
+          }
+        );
+
+        if (!shown) {
+          setNotificationMessage(
+            "Notifications are allowed in the browser but could not be displayed. Check your operating system's notification settings for this browser."
+          );
+        }
+      } else if (permission === "denied") {
+        setNotificationMessage(
+          "Notifications are blocked. Allow them for this site in your browser settings, then try again."
+        );
+      }
+    } catch (error) {
+      console.error("Could not request notification permission:", error);
+      setNotificationMessage(
+        "Could not enable notifications. Please try again."
+      );
+    }
+  };
+
+
   const [activeThresholds, setActiveThresholds] =
 
   useState<ThresholdValues>(getActiveThresholds());
@@ -174,6 +355,19 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
 
   const previousWarningsRef = useRef<Record<string, boolean>>({});
 
+  // Tracks the active AI warning type so one Firestore alert is saved per transition.
+  const previousAiWarningTypeRef = useRef<string>("none");
+
+  // Notifications use their own refs. Unlike the save refs above, these are
+  // only marked once a notification has actually been requested. That lets a
+  // warning that is already active start notifying as soon as the user grants
+  // permission, without writing the Firestore alert twice.
+  const notifiedWarningsRef = useRef<Record<string, boolean>>({});
+
+  const notifiedAiWarningTypeRef = useRef<string>("none");
+
+  const notifiedThresholdStatesRef = useRef<Record<string, boolean>>({});
+
   const previousThresholdStatesRef = useRef<
 
   Record<string, boolean>
@@ -183,43 +377,66 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
   const alertQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
+
   if (loading) return;
 
   if (!user) {
+
     setSafetyProfile(null);
+
     return;
+
   }
-  let currentUser = user ;
+   
+  const currentUser = user ;
   let cancelled = false;
 
   async function loadSafetyProfile() {
+
     try {
+
       const userRef = doc(db, "users", currentUser.uid);
+
       const userSnapshot = await getDoc(userRef);
 
       if (cancelled) return;
 
       const profile = userSnapshot.data()?.profile;
+
       const preferences = userSnapshot.data()?.preferences;
 
       setSafetyProfile({
+
         screenTime: profile?.screenTime ?? "",
+
         outdoorTime: profile?.outdoorTime ?? "",
+
         environment: profile?.environment ?? "",
+
         warningSensitivity: preferences?.warningSensitivity ?? "medium",
+
       });
+
     } catch (error) {
+
       console.error("Could not load safety profile:", error);
+
       if (!cancelled) setSafetyProfile(null);
+
     }
+
   }
 
   loadSafetyProfile();
 
   return () => {
+
     cancelled = true;
+
   };
+
 }, [user, loading]);
+
   useEffect(() => {
 
   if (loading) return;
@@ -316,12 +533,13 @@ const userRef = doc(db, "users", currentUser.uid);
 
     if (loading || !user) return;
 
-   
-const sensorRef = ref(
-  realtimeDb,
-  "devices/muskan-001/current"
-);
+    const sensorRef = ref(
 
+  realtimeDb,
+
+  "devices/astha-spectacles-001/current"
+
+);
 
     const unsubscribe = onValue(
 
@@ -503,60 +721,260 @@ const sensorRef = ref(
 
   }, [data, user, loading]);
 
-  // Save an alert when a reading crosses its active custom threshold.
+// Notify for Firebase warning transitions. This is intentionally separate from
+// the save effect above: a failed Firestore write must never suppress a
+// notification, and warnings that are already active should still notify once
+// the user grants permission.
 useEffect(() => {
+  if (loading || !user || !data) return;
+  if (notificationPermission !== "granted") return;
+
+  const warnings = data.warnings ?? {};
+
+  for (const sensor of SENSOR_DETAILS) {
+    const isWarning = warnings[sensor.key] === true;
+
+    if (!isWarning) {
+      notifiedWarningsRef.current[sensor.key] = false;
+      continue;
+    }
+
+    if (notifiedWarningsRef.current[sensor.key]) continue;
+
+    notifiedWarningsRef.current[sensor.key] = true;
+
+    const value = data[sensor.key] ?? null;
+
+    notifySafetyWarning({
+      sensor,
+      value,
+      threshold: activeThresholds[sensor.key],
+      profile: safetyProfile,
+      detail: `${sensor.title} warning detected. Current reading: ${
+        value === null || value === undefined
+          ? "unavailable"
+          : `${value}${sensor.unit}`
+      }.`,
+      thresholdExceeded:
+        checkThreshold(sensor.key, value, activeThresholds) === true,
+    });
+  }
+}, [
+  data,
+  user,
+  loading,
+  notificationPermission,
+  activeThresholds,
+  safetyProfile,
+]);
+
+// Save Visual Comfort alerts only when the warning type changes.
+// The Python script updates current/ai approximately every second; this transition
+// guard prevents one history entry per update. AI events are separate from the
+// physical distance sensor alerts above.
+useEffect(() => {
+  if (loading || !user || !data?.ai) return;
+
+  const ai = data.ai;
+  const { warningType, message, value } = getVisualComfortDetails(ai);
+  const transitionKey = warningType === "none"
+    ? "none"
+    : (ai.warningId ? `${warningType}:${ai.warningId}` : warningType);
+  const previousWarningType = previousAiWarningTypeRef.current;
+  previousAiWarningTypeRef.current = transitionKey;
+
+  if (warningType === "none" || transitionKey === previousWarningType) return;
+
+  alertQueueRef.current = alertQueueRef.current
+    .then(async () => {
+      await saveSensorAlert(user.uid, {
+        sensor: "visual_comfort",
+        value,
+        message,
+        severity: warningType === "too_close" ? "medium" : "high",
+        eventId: ai.warningId || undefined,
+      });
+
+      console.log(`Saved Visual Comfort alert: ${message}`);
+    })
+    .catch((error) => {
+      console.error("Failed to save Visual Comfort alert:", error);
+    });
+}, [data?.ai, user, loading]);
+
+// Notify for Visual Comfort transitions independently of the Firestore save.
+useEffect(() => {
+  if (loading || !user || !data?.ai) return;
+  if (notificationPermission !== "granted") return;
+
+  const ai = data.ai;
+  const { warningType, message, value } = getVisualComfortDetails(ai);
+  const transitionKey = warningType === "none"
+    ? "none"
+    : (ai.warningId ? `${warningType}:${ai.warningId}` : warningType);
+
+  if (warningType === "none") {
+    notifiedAiWarningTypeRef.current = "none";
+    return;
+  }
+
+  if (notifiedAiWarningTypeRef.current === transitionKey) return;
+  notifiedAiWarningTypeRef.current = transitionKey;
+
+  const action = warningType === "too_close"
+    ? "Move the object farther away to increase your viewing distance."
+    : "Give your eyes a short break, then resume when comfortable.";
+
+  void showNotification("Smart Spectacles: Visual Comfort", {
+    body: `${message}${value === null ? "" : ` (${value.toFixed(1)} cm)`}.\n\nRecommended action: ${action}`,
+    tag: `smart-spectacles-visual-comfort-${warningType}`,
+  });
+}, [data?.ai, user, loading, notificationPermission]);
+
+// Save an alert when a reading crosses its active custom threshold.
+
+useEffect(() => {
+
   if (loading || !user || !data || thresholdsLoading) return;
 
   for (const sensor of SENSOR_DETAILS) {
+
     const value = data[sensor.key] ?? null;
 
     const result = checkThreshold(
+
       sensor.key,
+
       value,
+
       activeThresholds
+
     );
 
-    // Ignore sensors without a valid reading.
+// Ignore sensors without a valid reading.
+
     if (result === null) continue;
 
     const wasWarning =
+
       previousThresholdStatesRef.current[sensor.key] === true;
 
-    // Save only when the sensor enters the warning state.
-    if (result && !wasWarning) {
+// Save only when the sensor enters the warning state.
+
+    if (result && !wasWarning && data.warnings?.[sensor.key] !== true) {
+
       const threshold = activeThresholds[sensor.key];
 
       const message =
+
         sensor.key === "distance"
+
           ? `${sensor.title} is below the configured threshold of ${threshold} cm.`
+
           : `${sensor.title} exceeds the configured threshold of ${threshold}.`;
 
       alertQueueRef.current = alertQueueRef.current
+
         .then(async () => {
+
           await saveSensorAlert(user.uid, {
+
             sensor: sensor.key,
+
             value,
+
             message,
+
             severity:
+
               sensor.key === "uv" || sensor.key === "gas"
+
                 ? "high"
+
                 : "medium",
+
           });
 
-          console.log(`Saved threshold alert for ${sensor.key}.`);
+        console.log(`Saved threshold alert for ${sensor.key}.`);
+
         })
+
         .catch((error) => {
+
           console.error(
+
             `Failed to save threshold alert for ${sensor.key}:`,
+
             error
+
           );
+
         });
+
     }
 
-    // Remember the latest threshold status.
-    // When the reading returns to normal, a future crossing
-    // can generate another alert.
+// Remember the latest threshold status.
+
+// When the reading returns to normal, a future crossing
+
+// can generate another alert.
+
     previousThresholdStatesRef.current[sensor.key] = result;
+
+  }
+
+}, [
+
+  data,
+
+  user,
+
+  loading,
+
+  thresholdsLoading,
+
+  activeThresholds,
+
+]);
+
+// Notify when a reading enters its active custom threshold. Kept separate from
+// the save effect above so a failed Firestore write never suppresses a
+// notification, and so an already-exceeded threshold notifies after permission
+// is granted.
+useEffect(() => {
+  if (loading || !user || !data || thresholdsLoading) return;
+  if (notificationPermission !== "granted") return;
+
+  for (const sensor of SENSOR_DETAILS) {
+    const value = data[sensor.key] ?? null;
+    const result = checkThreshold(sensor.key, value, activeThresholds);
+
+    if (result === null) continue;
+
+    if (!result) {
+      notifiedThresholdStatesRef.current[sensor.key] = false;
+      continue;
+    }
+
+    if (notifiedThresholdStatesRef.current[sensor.key]) continue;
+    notifiedThresholdStatesRef.current[sensor.key] = true;
+
+    // The Firebase warning notification above already covers this sensor.
+    if (data.warnings?.[sensor.key] === true) continue;
+
+    const threshold = activeThresholds[sensor.key];
+
+    notifySafetyWarning({
+      sensor,
+      value,
+      threshold,
+      profile: safetyProfile,
+      detail:
+        sensor.key === "distance"
+          ? `${sensor.title} is below your configured threshold of ${threshold} cm. Current reading: ${value} cm.`
+          : `${sensor.title} exceeds your configured threshold of ${threshold}. Current reading: ${value}${sensor.unit}.`,
+      thresholdExceeded: true,
+    });
   }
 }, [
   data,
@@ -564,7 +982,10 @@ useEffect(() => {
   loading,
   thresholdsLoading,
   activeThresholds,
+  notificationPermission,
+  safetyProfile,
 ]);
+
   const handleLogout = async () => {
 
     setLoggingOut(true);
@@ -594,43 +1015,67 @@ useEffect(() => {
   if (!user) return null;
 
  const warningCount = SENSOR_DETAILS.filter(({ key }) => {
+
   const firebaseWarning = data?.warnings?.[key] === true;
 
   const thresholdWarning =
+
     checkThreshold(
+
       key,
+
       data?.[key] ?? null,
+
       activeThresholds
+
     ) === true;
 
   return firebaseWarning || thresholdWarning;
+
 }).length;
 
 const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
+
   const value = data?.[sensor.key] ?? null;
 
   const threshold = activeThresholds[sensor.key];
 
   const exceeded =
+
     checkThreshold(sensor.key, value, activeThresholds) === true;
 
   const precaution = getSafetyPrecaution({
+
   sensor: sensor.key,
+
   value,
+
   threshold,
+
   exceeded,
+
   profile: safetyProfile,
+
 });
 
   return precaution ? [precaution] : [];
+
 });
+
 console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
+
   const connected =
+
   data !== null &&
+
   !connectionError &&
+
   Number(data.lastSeen) > 0 &&
+
   statusTime >= Number(data.lastSeen) &&
+
   statusTime - Number(data.lastSeen) < 5000;
+
   return (
 
     <main style={pageStyle}>
@@ -672,22 +1117,51 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
             </span>
 
           </Link>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              onClick={enableNotifications}
+              disabled={
+                notificationPermission === "unsupported" ||
+                notificationPermission === "insecure"
+              }
+              style={secondaryButtonStyle}
+              title={
+                notificationPermission === "insecure"
+                  ? "Notifications need HTTPS or localhost. Open the app at localhost or deploy it with HTTPS."
+                  : notificationPermission === "unsupported"
+                    ? "This browser does not support notifications."
+                    : notificationPermission === "denied"
+                      ? "Allow notifications for this site in your browser settings, then try again."
+                      : "Enable notifications or send a test notification"
+              }
+            >
+              {notificationPermission === "granted"
+                ? "✓ Notifications on · Send test"
+                : notificationPermission === "denied"
+                  ? "Notifications blocked"
+                  : notificationPermission === "insecure"
+                    ? "Notifications need HTTPS/localhost"
+                    : notificationPermission === "unsupported"
+                      ? "Notifications unavailable"
+                      : "Enable notifications"}
+            </button>
 
-          <button
-
-            onClick={handleLogout}
-
-            disabled={loggingOut}
-
-            style={secondaryButtonStyle}
-
-          >
-
-            {loggingOut ? "Logging out..." : "Log out"}
-
-          </button>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              style={secondaryButtonStyle}
+            >
+              {loggingOut ? "Logging out..." : "Log out"}
+            </button>
+          </div>
 
         </header>
+
+        {notificationMessage && (
+          <div role="status" style={notificationNoticeStyle}>
+            {notificationMessage}
+          </div>
+        )}
 
         {/* Navigation */}
 
@@ -712,10 +1186,15 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
           </Link>
 
           <Link href="/profile" style={navLinkStyle}>
+
             Profile Settings
+
           </Link>
+
           <Link href="/thresholds" style={navLinkStyle}>
+
             Threshold Settings
+
           </Link>
 
         </nav>
@@ -965,12 +1444,19 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
                 unit={sensor.unit}
 
                 warning={
+
   data?.warnings?.[sensor.key] === true ||
+
   checkThreshold(
+
     sensor.key,
+
     data?.[sensor.key] ?? null,
+
     activeThresholds
+
   ) === true
+
 }
 
                 hasData={
@@ -990,56 +1476,101 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
         </section>
 
     {/* Immediate Safety Precautions */}
+
     <section style={sectionStyle}>
+
       <h2 style={{ color: "#e2e8f0", marginBottom: "16px" }}>
+
         Immediate Safety Precautions
+
       </h2>
 
       {safetyPrecautions.length === 0 ? (
+
         <div
+
           style={{
+
             padding: "16px",
+
             borderRadius: "12px",
+
             background: "#102a2a",
+
             border: "1px solid #245c52",
+
             color: "#a7f3d0",
+
           }}
+
         >
+
           No configured sensor thresholds are currently exceeded.
+
         </div>
+
       ) : (
+
         <div style={{ display: "grid", gap: "12px" }}>
+
           {safetyPrecautions.map((precaution) => (
+
             <div
+
               key={precaution.sensor}
+
               style={{
+
                 padding: "16px",
+
                 borderRadius: "12px",
+
                 border: `1px solid ${
+
                   precaution.severity === "urgent" ? "#ef4444" : "#f59e0b"
+
                 }`,
+
                 background:
+
                   precaution.severity === "urgent" ? "#351717" : "#302714",
+
                 color: "#f8fafc",
+
               }}
+
             >
+
               <h3 style={{ margin: "0 0 8px" }}>
+
                 {precaution.severity === "urgent" ? "🚨 " : "⚠️ "}
+
                 {precaution.title}
+
               </h3>
 
               <p style={{ margin: "0 0 8px", color: "#cbd5e1" }}>
+
                 {precaution.message}
+
               </p>
 
               <p style={{ margin: 0, lineHeight: 1.6 }}>
+
                 <strong>What to do:</strong> {precaution.action}
+
               </p>
+
             </div>
+
           ))}
+
         </div>
+
       )}
+
     </section>
+
         {/* Existing Firebase warning status */}
 
         <section style={sectionStyle}>
@@ -1151,11 +1682,17 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
           </div>
 
           {thresholdsLoading ? (
+
             <div style={emptyStyle}>Loading your saved threshold settings...</div>
+
           ) : !data ? (
+
             <div style={emptyStyle}>
+
               Waiting for sensor readings before checking thresholds.
+
             </div>
+
           ) : (
 
             <div style={statusListStyle}>
@@ -1165,15 +1702,25 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
                 const value = data[sensor.key];
 
                 const result = checkThreshold(
+
                   sensor.key,
+
                   value ?? null,
+
                   activeThresholds
+
                 );
+
                 const threshold = SENSOR_THRESHOLDS[sensor.key];
+
                 const activeValue = activeThresholds[sensor.key];
+
                 const thresholdLabel =
+
                   sensor.key === "distance"
+
                     ? `below ${activeValue}${threshold.unit}`
+
                     : `above ${activeValue}${threshold.unit}`;
 
                 const statusText =
@@ -1297,10 +1844,15 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
                     </p>
 
                     <p style={{ ...mutedTextStyle, marginBottom: 6 }}>
+
                       Active test threshold: <strong>{thresholdLabel}</strong>
+
                     </p>
+
                     <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
+
                       {threshold.description}
+
                     </p>
 
                   </div>
@@ -2308,3 +2860,24 @@ const errorStyle = {
   fontSize: 13,
 
 };
+
+const notificationNoticeStyle = {
+
+  marginBottom: 16,
+
+  padding: 14,
+
+  border: "1px solid #92400e",
+
+  borderRadius: 10,
+
+  background: "rgba(146, 64, 14, 0.2)",
+
+  color: "#fde68a",
+
+  fontSize: 13,
+
+  lineHeight: 1.6,
+
+};
+
