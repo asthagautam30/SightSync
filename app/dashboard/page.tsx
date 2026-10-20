@@ -189,12 +189,12 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
     setSafetyProfile(null);
     return;
   }
-
+  let currentUser = user ;
   let cancelled = false;
 
   async function loadSafetyProfile() {
     try {
-      const userRef = doc(db, "users", user.uid);
+      const userRef = doc(db, "users", currentUser.uid);
       const userSnapshot = await getDoc(userRef);
 
       if (cancelled) return;
