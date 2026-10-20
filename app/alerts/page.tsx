@@ -15,7 +15,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 
 type Severity = "low" | "medium" | "high";
-type Category = "all" | "uv" | "light" | "gas" | "distance";
+type Category = "all" | "uv" | "light" | "gas" | "visualComfort";
 type Period = "1h" | "24h" | "7d" | "30d" | "all" | "custom";
 type Tab = "notViewed" | "viewed";
 
@@ -46,7 +46,7 @@ const categories: { label: string; value: Category }[] = [
   { label: "UV Alerts", value: "uv" },
   { label: "Light Alerts", value: "light" },
   { label: "Gas Alerts", value: "gas" },
-  { label: "Distance Alerts", value: "distance" },
+  { label: "Visual Comfort Alerts", value: "visualComfort" },
 ];
 
 const periods: { label: string; value: Period }[] = [
@@ -67,6 +67,8 @@ function severityColor(severity: Severity) {
 function getCategory(sensor: string): Category {
   const s = sensor.toLowerCase();
 
+  if (s.includes("visualcomfort") || s.includes("visual comfort") || s.includes("viewing")) return "visualComfort";
+
   if (s.includes("uv") || s.includes("ultraviolet")) return "uv";
 
   if (
@@ -86,17 +88,28 @@ function getCategory(sensor: string): Category {
     return "gas";
   }
 
-  if (
-    s.includes("distance") ||
-    s.includes("proximity") ||
-    s.includes("obstacle")
-  ) {
-    return "distance";
-  }
+  // Legacy distance alerts remain visible in All Alerts, but no longer have
+  // their own category because the dashboard now uses Visual Comfort alerts.
 
   // Unclassified alerts remain visible under All Alerts, but there is no
   // separate Other Alerts filter.
   return "all";
+}
+
+function formatSensorLabel(sensor: string) {
+  const normalized = sensor.trim().toLowerCase().replace(/[ _-]/g, "");
+
+  if (normalized === "visualcomfort" || normalized === "viewing") {
+    return "Visual Comfort";
+  }
+  if (normalized === "uv" || normalized === "ultraviolet") return "UV";
+  if (normalized === "light") return "Light";
+  if (normalized === "gas") return "Gas";
+  if (normalized === "distance" || normalized === "proximity") return "Distance";
+
+  return sensor
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function parseAlertDate(value: unknown): Date | null {
@@ -360,7 +373,7 @@ function AlertCard({
             }}
           >
             <strong style={{ color: C.text }}>
-              {alert.sensor.toUpperCase()}
+              {formatSensorLabel(alert.sensor)}
             </strong>
 
             <span
@@ -451,7 +464,7 @@ function AlertGraph({
   // Create one series per sensor. When the category filter selects one sensor
   // category, only the matching series appear because `alerts` is pre-filtered.
   const sensorNames = Array.from(
-    new Set(alerts.map((alert) => alert.sensor.toUpperCase()))
+    new Set(alerts.map((alert) => formatSensorLabel(alert.sensor)))
   ).sort();
 
   const series = sensorNames.map((sensor, sensorIndex) => ({
@@ -466,7 +479,7 @@ function AlertGraph({
     const index = Math.floor(elapsed / bucketDuration);
     if (index < 0 || index >= bucketCount) return;
 
-    const sensorIndex = sensorNames.indexOf(alert.sensor.toUpperCase());
+    const sensorIndex = sensorNames.indexOf(formatSensorLabel(alert.sensor));
     if (sensorIndex >= 0) series[sensorIndex].buckets[index]++;
   });
 

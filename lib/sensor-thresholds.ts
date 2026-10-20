@@ -19,28 +19,35 @@ export const DEFAULT_THRESHOLD_VALUES: ThresholdValues = {
 
 export const SENSOR_THRESHOLDS: Record<SensorKey, SensorThreshold> = {
   uv: {
-    label: "UV Sensor (ML8511)",
-    unit: " test units",
+    label: "UV Rays",
+    unit: "test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.uv,
-    description: "TEST ONLY: Not a calibrated UV index.",
+    description:
+      "Measures the current UV sensor reading. This is a project test value, not a calibrated UV index.",
   },
+
   gas: {
-    label: "Gas / Smoke (MQ-135)",
-    unit: " test units",
+    label: "Gas Level",
+    unit: "test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.gas,
-    description: "TEST ONLY: Not a calibrated gas concentration.",
+    description:
+      "Measures the gas sensor reading. This is a project test value, not a calibrated gas concentration.",
   },
+
   light: {
-    label: "Light Sensor (BH1750 / GY-302)",
-    unit: " lux",
+    label: "Light Intensity",
+    unit: "test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.light,
-    description: "TEST ONLY: Not a validated harmful-light limit.",
+    description:
+      "Measures the current light sensor reading. Confirm calibration before interpreting it as lux.",
   },
+
   distance: {
-    label: "Distance Sensor (HC-SR04)",
-    unit: " cm",
+    label: "Viewing Distance",
+    unit: "cm",
     warningBelow: DEFAULT_THRESHOLD_VALUES.distance,
-    description: "TEST ONLY: Proximity test threshold.",
+    description:
+      "Measures the distance to a nearby object. The warning threshold is configured in centimeters.",
   },
 };
 

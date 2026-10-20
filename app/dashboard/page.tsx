@@ -25,8 +25,6 @@ import {
 
   checkThreshold,
 
-  SENSOR_THRESHOLDS,
-
   getActiveThresholds,
 
   type ThresholdValues,
@@ -51,7 +49,27 @@ type SensorData = {
 
   warnings?: Partial<Record<SensorKey, boolean>>;
 
+  ai?: {
+    object?: string;
+    objectDetected?: boolean;
+    viewing?: boolean;
+    viewingTime?: number;
+    warning?: boolean;
+  };
+
 };
+
+// Convert Firebase/Wokwi timestamps (milliseconds, seconds, or date strings) to ms.
+function getLastSeenMs(value: SensorData["lastSeen"]): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "number" || /^\d+(\.\d+)?$/.test(String(value))) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 const SENSOR_DETAILS: {
 
@@ -109,20 +127,6 @@ const SENSOR_DETAILS: {
 
   },
 
-  {
-
-    key: "distance",
-
-    title: "Distance",
-
-    message: "Distance warning detected",
-
-    icon: "📏",
-
-    unit: " cm",
-
-  },
-
 ];
 
 export default function DashboardPage() {
@@ -133,6 +137,8 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<SensorData | null>(null);
 const [statusTime, setStatusTime] = useState(0);
+const [sensorActivityTime, setSensorActivityTime] = useState(0);
+const previousSensorSignatureRef = useRef("");
 
 useEffect(() => {
   const intervalId = window.setInterval(() => {
@@ -151,12 +157,6 @@ useEffect(() => {
   const [lastUpdate, setLastUpdate] = useState("Waiting for readings");
 
   const [connectionError, setConnectionError] = useState("");
-
-  const [historyStatus, setHistoryStatus] = useState(
-
-    "Waiting for sensor data..."
-
-  );
 
   const [recording, setRecording] = useState(true);
 
@@ -319,7 +319,7 @@ const userRef = doc(db, "users", currentUser.uid);
    
 const sensorRef = ref(
   realtimeDb,
-  "devices/muskan-001/current"
+  "devices/Prachi-spectacles-001/current"
 );
 
 
@@ -334,6 +334,21 @@ const sensorRef = ref(
         latestDataRef.current = sensorData;
 
         setData(sensorData);
+
+        // Fallback heartbeat for older Wokwi sketches that do not send lastSeen.
+        // Only sensor values count; AI updates alone must not keep the device connected.
+        if (sensorData) {
+          const signature = JSON.stringify({
+            uv: sensorData.uv ?? null,
+            gas: sensorData.gas ?? null,
+            light: sensorData.light ?? null,
+            distance: sensorData.distance ?? null,
+          });
+          if (signature !== previousSensorSignatureRef.current) {
+            previousSensorSignatureRef.current = signature;
+            setSensorActivityTime(Date.now());
+          }
+        }
 
         setLastUpdate(new Date().toLocaleTimeString());
 
@@ -379,15 +394,13 @@ const sensorRef = ref(
 
 // of the saved history risk status.
 
-        const risk = SENSOR_DETAILS.some(
-
-          ({ key }) => reading.warnings?.[key] === true
-
-        )
-
-          ? "warning"
-
-          : "normal";
+        const risk =
+          reading.ai?.warning === true ||
+          SENSOR_DETAILS.some(
+            ({ key }) => reading.warnings?.[key] === true
+          )
+            ? "warning"
+            : "normal";
 
         await saveSensorReading(user.uid, {
 
@@ -407,21 +420,9 @@ const sensorRef = ref(
 
         });
 
-        setHistoryStatus(
-
-          `Last saved: ${new Date().toLocaleTimeString()}`
-
-        );
-
       } catch (error) {
 
         console.error("Sensor history save failed:", error);
-
-        setHistoryStatus(
-
-          "History save failed. Check your connection."
-
-        );
 
       } finally {
 
@@ -502,6 +503,34 @@ const sensorRef = ref(
     }
 
   }, [data, user, loading]);
+
+  // Save one Visual Comfort alert when the AI warning changes from normal to warning.
+  useEffect(() => {
+    if (loading || !user || !data?.ai) return;
+
+    const isWarning = data.ai.warning === true;
+    const wasWarning =
+      previousWarningsRef.current.visualComfort === true;
+
+    if (isWarning && !wasWarning) {
+      alertQueueRef.current = alertQueueRef.current
+        .then(async () => {
+          await saveSensorAlert(user.uid, {
+            sensor: "visualComfort",
+            value: data.ai?.viewingTime ?? null,
+            message:
+              "Visual Comfort warning: take a break from close or prolonged viewing.",
+            severity: "medium",
+          });
+          console.log("Saved Visual Comfort alert.");
+        })
+        .catch((error) => {
+          console.error("Failed to save Visual Comfort alert:", error);
+        });
+    }
+
+    previousWarningsRef.current.visualComfort = isWarning;
+  }, [data?.ai?.warning, data?.ai?.viewingTime, user, loading]);
 
   // Save an alert when a reading crosses its active custom threshold.
 useEffect(() => {
@@ -624,13 +653,25 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
   return precaution ? [precaution] : [];
 });
-console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
-  const connected =
-  data !== null &&
-  !connectionError &&
-  Number(data.lastSeen) > 0 &&
-  statusTime >= Number(data.lastSeen) &&
-  statusTime - Number(data.lastSeen) < 5000;
+// A non-empty Firebase snapshot can be old data left behind after Wokwi stops.
+  // Treat the device as connected only while its lastSeen timestamp is fresh.
+  // Wokwi sends a Firebase server timestamp in lastSeen every 2 seconds.
+  const lastSeenMs = getLastSeenMs(data?.lastSeen);
+  const hasSensorData = data !== null &&
+    [data.uv, data.gas, data.light, data.distance].some((value) => value !== undefined && value !== null);
+  const lastActivityMs = lastSeenMs ?? (sensorActivityTime > 0 ? sensorActivityTime : null);
+  // Use a 6-second heartbeat timeout. If lastSeen is provided by the ESP32,
+  // it takes priority; otherwise, changed sensor readings act as a fallback heartbeat.
+  const isFresh = lastActivityMs !== null && statusTime > 0 &&
+    statusTime - lastActivityMs >= -3_000 && statusTime - lastActivityMs <= 15_000;
+  const connected = hasSensorData && isFresh && !connectionError;
+  const connectionLabel = connectionError
+    ? "Connection error"
+    : !hasSensorData
+      ? "Waiting for data"
+      : connected
+        ? "Connected"
+        : "Disconnected";
   return (
 
     <main style={pageStyle}>
@@ -715,7 +756,7 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
             Profile Settings
           </Link>
           <Link href="/thresholds" style={navLinkStyle}>
-            Threshold Settings
+            Alert Settings
           </Link>
 
         </nav>
@@ -800,15 +841,7 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
 
               >
 
-                {connectionError
-
-                  ? "Connection error"
-
-                  : connected
-
-                    ? "Receiving data"
-
-                    : "Waiting for data"}
+                {connectionLabel}
 
               </strong>
 
@@ -838,7 +871,7 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
 
             label="Data connection"
 
-            value={connected ? "Connected" : "Waiting"}
+            value={connectionError ? "Error" : !hasSensorData ? "Waiting" : connected ? "Connected" : "Disconnected"}
 
             detail={
 
@@ -912,7 +945,7 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
 
             value={lastUpdate}
 
-            detail="Most recently received update"
+            detail={connected ? "Live sensor updates" : "Last received update (may be stale)"}
 
             color="#67e8f9"
 
@@ -985,6 +1018,47 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
 
             ))}
 
+            {/* Visual Comfort is part of Live Monitoring */}
+            <article
+              style={{
+                ...sensorCardStyle,
+                borderColor: data?.ai?.warning ? "#f87171" : "#203a50",
+              }}
+            >
+              <div style={summaryTopStyle}>
+                <span style={{ fontSize: 25 }}>👁️</span>
+                <span
+                  style={{
+                    ...summaryDotStyle,
+                    background: data?.ai?.warning ? "#fb7185" : "#4ade80",
+                  }}
+                />
+              </div>
+              <h3 style={sensorTitleStyle}>Visual Comfort</h3>
+              <p
+                style={{
+                  ...sensorValueStyle,
+                  fontSize: 25,
+                  color: data?.ai?.warning ? "#fda4af" : "#86efac",
+                }}
+              >
+                {data?.ai?.warning ? "Warning" : "Normal"}
+              </p>
+              <p style={summaryDetailStyle}>
+                {data?.ai?.warning
+                  ? "Please take a break from close or prolonged viewing."
+                  : "No Visual Comfort warning reported by AI."}
+              </p>
+              <p style={summaryDetailStyle}>
+                Detected object: {data?.ai?.object || "None"}
+              </p>
+              <p style={summaryDetailStyle}>
+                Viewing time: {data?.ai?.viewingTime ?? 0} seconds
+              </p>
+              <p style={summaryDetailStyle}>
+                AI status: {data?.ai ? "Connected" : "Waiting for AI data"}
+              </p>
+            </article>
           </div>
 
         </section>
@@ -1104,330 +1178,20 @@ console.log("Sensor timestamp:", data?.lastSeen, "Current time:", Date.now());
 
               })}
 
+              <div style={statusRowStyle}>
+                <span>👁️ Visual Comfort</span>
+                <span
+                  style={{
+                    color: data.ai?.warning ? "#fca5a5" : "#86efac",
+                    fontWeight: 700,
+                  }}
+                >
+                  {data.ai?.warning ? "⚠ Warning" : "✓ Normal"}
+                </span>
+              </div>
             </div>
 
           )}
-
-        </section>
-
-        {/* NEW: Software threshold evaluation */}
-
-        <section style={sectionStyle}>
-
-          <p style={eyebrowStyle}>DEVELOPMENT TOOL</p>
-
-          <h2 style={sectionTitleStyle}>Test threshold status</h2>
-
-          <p style={mutedTextStyle}>
-
-            This section compares received values with the software
-
-            test thresholds in lib/sensor-thresholds.ts. It is separate
-
-            from the warning flags received from Firebase.
-
-          </p>
-
-          <div style={testNoticeStyle}>
-
-            <strong style={{ color: "#fcd34d" }}>
-
-              Test mode only
-
-            </strong>
-
-            <p style={mutedTextStyle}>
-
-              Your current readings may be simulated. These test
-
-              thresholds are not calibrated real-world safety limits.
-
-              This section does not create alerts or change Firebase
-
-              warning flags.
-
-            </p>
-
-          </div>
-
-          {thresholdsLoading ? (
-            <div style={emptyStyle}>Loading your saved threshold settings...</div>
-          ) : !data ? (
-            <div style={emptyStyle}>
-              Waiting for sensor readings before checking thresholds.
-            </div>
-          ) : (
-
-            <div style={statusListStyle}>
-
-              {SENSOR_DETAILS.map((sensor) => {
-
-                const value = data[sensor.key];
-
-                const result = checkThreshold(
-                  sensor.key,
-                  value ?? null,
-                  activeThresholds
-                );
-                const threshold = SENSOR_THRESHOLDS[sensor.key];
-                const activeValue = activeThresholds[sensor.key];
-                const thresholdLabel =
-                  sensor.key === "distance"
-                    ? `below ${activeValue}${threshold.unit}`
-                    : `above ${activeValue}${threshold.unit}`;
-
-                const statusText =
-
-                  result === null
-
-                    ? "No reading available"
-
-                    : result
-
-                      ? "Test threshold exceeded"
-
-                      : "Within test threshold";
-
-                const statusColor =
-
-                  result === null
-
-                    ? "#fcd34d"
-
-                    : result
-
-                      ? "#fca5a5"
-
-                      : "#86efac";
-
-                return (
-
-                  <div
-
-                    key={sensor.key}
-
-                    style={{
-
-                      ...statusRowStyle,
-
-                      display: "block",
-
-                      borderColor:
-
-                        result === true
-
-                          ? "#7f2938"
-
-                          : "#20344b",
-
-                    }}
-
-                  >
-
-                    <div
-
-                      style={{
-
-                        display: "flex",
-
-                        justifyContent: "space-between",
-
-                        alignItems: "center",
-
-                        flexWrap: "wrap",
-
-                        gap: 12,
-
-                      }}
-
-                    >
-
-                      <strong style={{ color: "#e2eaf5" }}>
-
-                        {sensor.icon} {sensor.title}
-
-                      </strong>
-
-                      <span
-
-                        style={{
-
-                          color: statusColor,
-
-                          fontWeight: 700,
-
-                          fontSize: 13,
-
-                        }}
-
-                      >
-
-                        {statusText}
-
-                      </span>
-
-                    </div>
-
-                    <p
-
-                      style={{
-
-                        margin: "12px 0 6px",
-
-                        color: "#dce8f6",
-
-                        fontSize: 14,
-
-                      }}
-
-                    >
-
-                      Current value:{" "}
-
-                      <strong>
-
-                        {value !== undefined && value !== null
-
-                          ? `${value}${threshold.unit}`
-
-                          : "--"}
-
-                      </strong>
-
-                    </p>
-
-                    <p style={{ ...mutedTextStyle, marginBottom: 6 }}>
-                      Active test threshold: <strong>{thresholdLabel}</strong>
-                    </p>
-                    <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
-                      {threshold.description}
-                    </p>
-
-                  </div>
-
-                );
-
-              })}
-
-            </div>
-
-          )}
-
-        </section>
-
-        {/* Sensor history */}
-
-        <section style={sectionStyle}>
-
-          <p style={eyebrowStyle}>DATA COLLECTION</p>
-
-          <h2 style={sectionTitleStyle}>Sensor history</h2>
-
-          <p style={mutedTextStyle}>
-
-            Readings are saved while recording is enabled.
-
-          </p>
-
-          <div style={recordingPanelStyle}>
-
-            <div>
-
-              <strong style={{ color: "#e2eaf5" }}>
-
-                {recording
-
-                  ? "History recording enabled"
-
-                  : "History recording paused"}
-
-              </strong>
-
-              <p style={mutedTextStyle}>{historyStatus}</p>
-
-              <span
-
-                style={{
-
-                  color: "#71869e",
-
-                  fontSize: 12,
-
-                }}
-
-              >
-
-                Recording interval: 5 seconds
-
-              </span>
-
-            </div>
-
-            <button
-
-              onClick={() =>
-
-                setRecording((current) => !current)
-
-              }
-
-              style={
-
-                recording
-
-                  ? secondaryButtonStyle
-
-                  : primaryButtonStyle
-
-              }
-
-            >
-
-              {recording
-
-                ? "Ⅱ Pause recording"
-
-                : "▶ Resume recording"}
-
-            </button>
-
-          </div>
-
-          <Link href="/history" style={actionLinkStyle}>
-
-            <span>📈 View sensor history and charts</span>
-
-            <span>→</span>
-
-          </Link>
-
-        </section>
-
-        {/* Alert history */}
-
-        <section style={sectionStyle}>
-
-          <p style={eyebrowStyle}>SAFETY EVENTS</p>
-
-          <h2 style={sectionTitleStyle}>Alert history</h2>
-
-          <p style={mutedTextStyle}>
-
-            Alerts are saved when a sensor changes from normal to
-
-            warning. You can review and acknowledge them on the Alert
-
-            History page.
-
-          </p>
-
-          <Link href="/alerts" style={actionLinkStyle}>
-
-            <span>🔔 View Alert History and acknowledge alerts</span>
-
-            <span>→</span>
-
-          </Link>
 
         </section>
 
