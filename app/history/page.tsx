@@ -104,10 +104,11 @@ const RANGE_OPTIONS: {
 // Distance is intentionally excluded from sensor charts.
 // Its graph is replaced with the Visual Comfort dashboard below.
 const SENSOR_CONFIG: {
-  key: SensorKey;
-  label: string;
-  unit: string;
-  redWhen: "above" | "below";
+  key: "light",
+  label: "Light Level",
+  unit: " raw test units",
+  redWhen: "below",
+
 }[] = [
   {
     key: "uv",

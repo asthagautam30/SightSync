@@ -13,6 +13,7 @@ import {
 import { db } from "@/lib/firebase";
 import { useAuth } from "../auth-provider";
 import {
+  DEFAULT_THRESHOLD_VALUES,
   SENSOR_THRESHOLDS,
   type SensorKey,
   type ThresholdValues,
@@ -21,10 +22,7 @@ import {
 type ThresholdMode = "default" | "custom";
 
 const DEFAULT_VALUES: ThresholdValues = {
-  uv: 50,
-  gas: 300,
-  light: 500,
-  distance: 50,
+  ...DEFAULT_THRESHOLD_VALUES,
 };
 
 const SENSOR_ORDER: SensorKey[] = [
@@ -53,49 +51,47 @@ const SENSOR_RANGES: Record<
   }
 > = {
   uv: {
-    low: "0–20",
-    medium: "21–35",
-    high: "36–50+",
+    low: "0–1000",
+    medium: "1001–3000",
+    high: "Above 3000",
     url: "/help/alert-settings/uv",
     linkLabel: "How to set UV limit? ↗",
     description:
-      "Set the value at which you want to receive a UV warning. A lower limit triggers a warning sooner.",
+      "A warning is triggered when the raw UV sensor reading rises above your configured limit. These are simulation values, not a calibrated UV index.",
   },
 
   gas: {
-    low: "0–100",
-    medium: "101–200",
-    high: "201–300+",
+    low: "0–1000",
+    medium: "1001–2000",
+    high: "Above 2000",
     url: "/help/alert-settings/gas",
     linkLabel: "How to set gas limit? ↗",
     description:
-      "Choose a warning limit for gas readings. You can customize the value according to your monitoring needs.",
+      "A warning is triggered when the raw gas sensor reading rises above your configured limit. These values are not calibrated gas concentrations.",
   },
 
   light: {
-    low: "0–200",
-    medium: "201–350",
-    high: "351–500+",
+    low: "Below 400",
+    medium: "400–800",
+    high: "Above 800",
     url: "/help/alert-settings/light",
     linkLabel: "How to set light limit? ↗",
     description:
-      "Choose the light reading at which you want the dashboard to display a warning.",
+      "A low-light warning is triggered when the raw light sensor reading falls below your configured limit. These are test values, not calibrated lux values.",
   },
 
   distance: {
-    low: "0–15 cm",
-    medium: ">15–35 cm",
-    high: ">35 cm",
+    low: "Below 15 cm",
+    medium: "15–30 cm",
+    high: "Above 30 cm",
     url: "/help/alert-settings/distance",
     linkLabel: "How to set distance limit? ↗",
     description:
-      "Set your preferred viewing-distance limit. This setting controls the configured warning value shown in your project.",
+      "A viewing-distance warning is triggered when an object is closer than your configured distance limit.",
   },
 };
 
-function isValidThreshold(
-  value: unknown
-): value is number {
+function isValidThreshold(value: unknown): value is number {
   return (
     typeof value === "number" &&
     Number.isFinite(value) &&
@@ -103,11 +99,8 @@ function isValidThreshold(
   );
 }
 
-function getSavedValues(
-  savedValues: unknown
-): ThresholdValues {
-  const saved =
-    (savedValues ?? {}) as Partial<ThresholdValues>;
+function getSavedValues(savedValues: unknown): ThresholdValues {
+  const saved = (savedValues ?? {}) as Partial<ThresholdValues>;
 
   return {
     uv: isValidThreshold(saved.uv)
@@ -131,17 +124,11 @@ function getSavedValues(
 export default function ThresholdSettingsPage() {
   const { user } = useAuth();
 
-  const [mode, setMode] =
-    useState<ThresholdMode>("default");
-
-  const [values, setValues] =
-    useState<ThresholdValues>({
-      ...DEFAULT_VALUES,
-    });
-
-  const [expanded, setExpanded] =
-    useState<SensorKey | null>(null);
-
+  const [mode, setMode] = useState<ThresholdMode>("default");
+  const [values, setValues] = useState<ThresholdValues>({
+    ...DEFAULT_VALUES,
+  });
+  const [expanded, setExpanded] = useState<SensorKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
@@ -165,14 +152,11 @@ export default function ThresholdSettingsPage() {
         if (cancelled) return;
 
         if (snapshot.exists()) {
-          const settings =
-            snapshot.data().thresholdSettings;
+          const settings = snapshot.data().thresholdSettings;
 
           if (settings?.mode === "custom") {
             setMode("custom");
-            setValues(
-              getSavedValues(settings.values)
-            );
+            setValues(getSavedValues(settings.values));
           } else {
             setMode("default");
             setValues({ ...DEFAULT_VALUES });
@@ -182,10 +166,7 @@ export default function ThresholdSettingsPage() {
           setValues({ ...DEFAULT_VALUES });
         }
       } catch (err) {
-        console.error(
-          "Failed to load threshold settings:",
-          err
-        );
+        console.error("Failed to load threshold settings:", err);
 
         if (!cancelled) {
           setError(
@@ -199,7 +180,7 @@ export default function ThresholdSettingsPage() {
       }
     }
 
-    loadSettings();
+    void loadSettings();
 
     return () => {
       cancelled = true;
@@ -217,14 +198,10 @@ export default function ThresholdSettingsPage() {
     }
   }
 
-  function updateValue(
-    sensor: SensorKey,
-    input: string
-  ) {
+  function updateValue(sensor: SensorKey, input: string) {
     setValues((previous) => ({
       ...previous,
-      [sensor]:
-        input === "" ? 0 : Number(input),
+      [sensor]: input === "" ? 0 : Number(input),
     }));
 
     setStatus("");
@@ -233,9 +210,7 @@ export default function ThresholdSettingsPage() {
 
   async function handleSave() {
     if (!user) {
-      setError(
-        "Please log in to save your settings."
-      );
+      setError("Please log in to save your settings.");
       return;
     }
 
@@ -256,10 +231,10 @@ export default function ThresholdSettingsPage() {
     setSaving(true);
 
     try {
-      const valuesToSave =
+      const valuesToSave: ThresholdValues =
         mode === "custom"
-          ? values
-          : DEFAULT_VALUES;
+          ? { ...values }
+          : { ...DEFAULT_VALUES };
 
       await setDoc(
         doc(db, "users", user.uid),
@@ -282,14 +257,8 @@ export default function ThresholdSettingsPage() {
           : "Custom alert limits saved successfully."
       );
     } catch (err) {
-      console.error(
-        "Failed to save thresholds:",
-        err
-      );
-
-      setError(
-        "Could not save settings. Please try again."
-      );
+      console.error("Failed to save thresholds:", err);
+      setError("Could not save settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -299,18 +268,9 @@ export default function ThresholdSettingsPage() {
     return (
       <main style={styles.page}>
         <section style={styles.panel}>
-          <h1 style={styles.title}>
-            Alert Settings
-          </h1>
-
-          <p>
-            Please log in to manage your thresholds.
-          </p>
-
-          <Link
-            href="/login"
-            style={styles.button}
-          >
+          <h1 style={styles.title}>Alert Settings</h1>
+          <p>Please log in to manage your thresholds.</p>
+          <Link href="/login" style={styles.button}>
             Go to Login
           </Link>
         </section>
@@ -321,9 +281,7 @@ export default function ThresholdSettingsPage() {
   if (loading) {
     return (
       <main style={styles.page}>
-        <p style={styles.muted}>
-          Loading settings...
-        </p>
+        <p style={styles.muted}>Loading settings...</p>
       </main>
     );
   }
@@ -331,26 +289,27 @@ export default function ThresholdSettingsPage() {
   return (
     <main style={styles.page}>
       <div style={styles.container}>
-        <Link
-          href="/dashboard"
-          style={styles.backLink}
-        >
+        <Link href="/dashboard" style={styles.backLink}>
           ← Back to Dashboard
         </Link>
 
-        <h1 style={styles.title}>
-          Alert Settings
-        </h1>
+        <h1 style={styles.title}>Alert Settings</h1>
 
         <p style={styles.subtitle}>
-          Choose default alert limits or customize
-          warning values for each sensor.
+          Choose the default Wokwi test limits or customize warning
+          values for each sensor.
         </p>
 
+        <section style={styles.notice} role="note">
+          <strong>Simulation thresholds</strong>
+          <p style={styles.noticeText}>
+            These values match your current Wokwi test configuration.
+            They are not calibrated real-world health or safety limits.
+          </p>
+        </section>
+
         <section style={styles.panel}>
-          <h2 style={styles.heading}>
-            Settings Mode
-          </h2>
+          <h2 style={styles.heading}>Settings Mode</h2>
 
           <div style={styles.modeRow}>
             <label style={styles.radioLabel}>
@@ -358,9 +317,8 @@ export default function ThresholdSettingsPage() {
                 type="radio"
                 name="mode"
                 checked={mode === "default"}
-                onChange={() =>
-                  changeMode("default")
-                }
+                onChange={() => changeMode("default")}
+                disabled={saving}
               />
               Default
             </label>
@@ -370,9 +328,8 @@ export default function ThresholdSettingsPage() {
                 type="radio"
                 name="mode"
                 checked={mode === "custom"}
-                onChange={() =>
-                  changeMode("custom")
-                }
+                onChange={() => changeMode("custom")}
+                disabled={saving}
               />
               Custom
             </label>
@@ -380,34 +337,30 @@ export default function ThresholdSettingsPage() {
         </section>
 
         <section style={styles.panel}>
-          <h2 style={styles.heading}>
-            Sensor Alert Limits
-          </h2>
+          <h2 style={styles.heading}>Sensor Alert Limits</h2>
 
           {SENSOR_ORDER.map((sensor) => {
             const range = SENSOR_RANGES[sensor];
-            const sensorInfo =
-              SENSOR_THRESHOLDS[sensor];
+            const sensorInfo = SENSOR_THRESHOLDS[sensor];
+            const isExpanded = expanded === sensor;
 
-            const isExpanded =
-              expanded === sensor;
-
-            // Hide "test unit" for UV and Gas.
-            // Keep the existing physical units for
-            // Light and Viewing Distance.
             const displayUnit =
+              sensor === "distance"
+                ? "cm"
+                : sensorInfo.unit;
+
+            const warningDirection =
               sensor === "uv" || sensor === "gas"
-                ? ""
-                : sensorInfo.unit.trim();
+                ? "Warn when reading rises above the limit."
+                : "Warn when reading falls below the limit.";
 
             return (
-              <article
-                key={sensor}
-                style={styles.sensor}
-              >
+              <article key={sensor} style={styles.sensor}>
                 <h3 style={styles.sensorTitle}>
                   {SENSOR_NAMES[sensor]}
                 </h3>
+
+                <p style={styles.direction}>{warningDirection}</p>
 
                 {mode === "default" ? (
                   <div style={styles.defaultRow}>
@@ -415,23 +368,22 @@ export default function ThresholdSettingsPage() {
                       Warning Limit
                     </span>
 
-                    <strong
-                      style={styles.defaultValue}
-                    >
-                      {DEFAULT_VALUES[sensor]}
-                      {displayUnit
-                        ? ` ${displayUnit}`
-                        : ""}
+                    <strong style={styles.defaultValue}>
+                      {DEFAULT_VALUES[sensor]} {displayUnit}
                     </strong>
                   </div>
                 ) : (
                   <>
-                    <div style={styles.inputLabel}>
+                    <label
+                      style={styles.inputLabel}
+                      htmlFor={`threshold-${sensor}`}
+                    >
                       Warning Limit
-                    </div>
+                    </label>
 
                     <div style={styles.inputRow}>
                       <input
+                        id={`threshold-${sensor}`}
                         type="number"
                         min="0.000001"
                         step="any"
@@ -441,30 +393,19 @@ export default function ThresholdSettingsPage() {
                             : values[sensor]
                         }
                         onChange={(event) =>
-                          updateValue(
-                            sensor,
-                            event.target.value
-                          )
+                          updateValue(sensor, event.target.value)
                         }
                         disabled={saving}
                         aria-label={`${SENSOR_NAMES[sensor]} warning limit`}
                         style={styles.input}
                       />
 
-                      {displayUnit && (
-                        <span style={styles.unit}>
-                          {displayUnit}
-                        </span>
-                      )}
+                      <span style={styles.unit}>{displayUnit}</span>
 
                       <button
                         type="button"
                         onClick={() =>
-                          setExpanded(
-                            isExpanded
-                              ? null
-                              : sensor
-                          )
+                          setExpanded(isExpanded ? null : sensor)
                         }
                         aria-expanded={isExpanded}
                         aria-label={`Toggle ${SENSOR_NAMES[sensor]} suggested ranges`}
@@ -476,14 +417,8 @@ export default function ThresholdSettingsPage() {
                     </div>
 
                     <div style={styles.inputFooter}>
-                      <span
-                        style={styles.defaultHint}
-                      >
-                        Default:{" "}
-                        {DEFAULT_VALUES[sensor]}
-                        {displayUnit
-                          ? ` ${displayUnit}`
-                          : ""}
+                      <span style={styles.defaultHint}>
+                        Default: {DEFAULT_VALUES[sensor]} {displayUnit}
                       </span>
 
                       <Link
@@ -502,23 +437,17 @@ export default function ThresholdSettingsPage() {
                       <div style={styles.rangeBox}>
                         <div style={styles.rangeRow}>
                           <span>Low</span>
-                          <strong>
-                            {range.low}
-                          </strong>
+                          <strong>{range.low}</strong>
                         </div>
 
                         <div style={styles.rangeRow}>
                           <span>Medium</span>
-                          <strong>
-                            {range.medium}
-                          </strong>
+                          <strong>{range.medium}</strong>
                         </div>
 
                         <div style={styles.rangeRow}>
                           <span>High</span>
-                          <strong>
-                            {range.high}
-                          </strong>
+                          <strong>{range.high}</strong>
                         </div>
                       </div>
                     )}
@@ -530,19 +459,13 @@ export default function ThresholdSettingsPage() {
         </section>
 
         {status && (
-          <p
-            role="status"
-            style={styles.success}
-          >
+          <p role="status" style={styles.success}>
             {status}
           </p>
         )}
 
         {error && (
-          <p
-            role="alert"
-            style={styles.error}
-          >
+          <p role="alert" style={styles.error}>
             {error}
           </p>
         )}
@@ -552,17 +475,15 @@ export default function ThresholdSettingsPage() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            style={styles.button}
+            style={{
+              ...styles.button,
+              opacity: saving ? 0.7 : 1,
+            }}
           >
-            {saving
-              ? "Saving..."
-              : "Save Settings"}
+            {saving ? "Saving..." : "Save Settings"}
           </button>
 
-          <Link
-            href="/dashboard"
-            style={styles.cancelButton}
-          >
+          <Link href="/dashboard" style={styles.cancelButton}>
             Cancel
           </Link>
         </div>
@@ -591,6 +512,22 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "12px",
     padding: "18px",
     marginTop: "18px",
+  },
+
+  notice: {
+    background: "#17243a",
+    border: "1px solid #475569",
+    borderRadius: "10px",
+    padding: "14px 16px",
+    marginTop: "18px",
+    color: "#bfdbfe",
+    fontSize: "14px",
+    lineHeight: 1.5,
+  },
+
+  noticeText: {
+    color: "#cbd5e1",
+    margin: "6px 0 0",
   },
 
   title: {
@@ -640,8 +577,15 @@ const styles: Record<string, CSSProperties> = {
 
   sensorTitle: {
     fontSize: "18px",
-    margin: "0 0 12px",
+    margin: "0 0 8px",
     color: "#f9fafb",
+  },
+
+  direction: {
+    fontSize: "12px",
+    lineHeight: 1.5,
+    color: "#93c5fd",
+    margin: "0 0 12px",
   },
 
   defaultRow: {
@@ -662,6 +606,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   inputLabel: {
+    display: "block",
     fontSize: "13px",
     marginBottom: "7px",
     color: "#cbd5e1",
@@ -709,6 +654,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: "10px",
+    flexWrap: "wrap",
     marginTop: "7px",
   },
 
@@ -754,6 +700,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   button: {
+    display: "inline-block",
     padding: "11px 18px",
     borderRadius: "8px",
     border: "none",

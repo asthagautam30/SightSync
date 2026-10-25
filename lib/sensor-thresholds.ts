@@ -10,36 +10,40 @@ export type SensorThreshold = {
 
 export type ThresholdValues = Record<SensorKey, number>;
 
+/**
+ * Simulation defaults aligned with the current ESP32/Wokwi sketch.
+ * These are raw test readings, not calibrated real-world safety limits.
+ */
 export const DEFAULT_THRESHOLD_VALUES: ThresholdValues = {
-  uv: 50,
-  gas: 300,
-  light: 500,
-  distance: 50,
+  uv: 3000,
+  gas: 2000,
+  light: 800,
+  distance: 30,
 };
 
 export const SENSOR_THRESHOLDS: Record<SensorKey, SensorThreshold> = {
   uv: {
     label: "UV Rays",
-    unit: "test units",
+    unit: "raw test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.uv,
     description:
-      "Measures the current UV sensor reading. This is a project test value, not a calibrated UV index.",
+      "Warns when the raw UV sensor reading exceeds the configured test threshold. This is not a calibrated UV index.",
   },
 
   gas: {
-    label: "Gas Level",
-    unit: "test units",
+    label: "Gas / Smoke",
+    unit: "raw test units",
     warningAbove: DEFAULT_THRESHOLD_VALUES.gas,
     description:
-      "Measures the gas sensor reading. This is a project test value, not a calibrated gas concentration.",
+      "Warns when the raw gas sensor reading exceeds the configured test threshold. This does not identify a specific gas or concentration.",
   },
 
   light: {
-    label: "Light Intensity",
-    unit: "test units",
-    warningAbove: DEFAULT_THRESHOLD_VALUES.light,
+    label: "Light Level",
+    unit: "raw test units",
+    warningBelow: DEFAULT_THRESHOLD_VALUES.light,
     description:
-      "Measures the current light sensor reading. Confirm calibration before interpreting it as lux.",
+      "Warns when the light sensor reading falls below the configured threshold, indicating potentially poor lighting. This is not calibrated lux.",
   },
 
   distance: {
@@ -47,10 +51,14 @@ export const SENSOR_THRESHOLDS: Record<SensorKey, SensorThreshold> = {
     unit: "cm",
     warningBelow: DEFAULT_THRESHOLD_VALUES.distance,
     description:
-      "Measures the distance to a nearby object. The warning threshold is configured in centimeters.",
+      "Warns when the measured viewing distance is below the configured proximity threshold.",
   },
 };
 
+/**
+ * Returns the active threshold values, including saved custom values.
+ * This function does not modify or persist user settings.
+ */
 export function getActiveThresholds(
   customValues?: Partial<ThresholdValues> | null
 ): ThresholdValues {
@@ -64,12 +72,21 @@ export function getActiveThresholds(
 }
 
 export function isThresholdConfigured(sensor: SensorKey): boolean {
+  const threshold = SENSOR_THRESHOLDS[sensor];
+
   return (
-    SENSOR_THRESHOLDS[sensor].warningAbove !== undefined ||
-    SENSOR_THRESHOLDS[sensor].warningBelow !== undefined
+    threshold.warningAbove !== undefined ||
+    threshold.warningBelow !== undefined
   );
 }
 
+/**
+ * Warning direction:
+ * - UV and gas: above threshold
+ * - Light and distance: below threshold
+ *
+ * Returns null when the reading is missing or invalid.
+ */
 export function checkThreshold(
   sensor: SensorKey,
   value: number | null,
@@ -82,9 +99,22 @@ export function checkThreshold(
   const active = getActiveThresholds(thresholds);
   const threshold = active[sensor];
 
-  if (sensor === "distance") {
-    return value < threshold;
+  if (!Number.isFinite(threshold)) {
+    return null;
   }
 
-  return value > threshold;
+  switch (sensor) {
+    case "uv":
+    case "gas":
+      return value > threshold;
+
+    case "light":
+    case "distance":
+      return value < threshold;
+
+    default: {
+      const exhaustiveCheck: never = sensor;
+      return exhaustiveCheck;
+    }
+  }
 }

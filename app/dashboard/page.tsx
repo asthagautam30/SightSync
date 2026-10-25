@@ -556,9 +556,12 @@ useEffect(() => {
       const threshold = activeThresholds[sensor.key];
 
       const message =
-        sensor.key === "distance"
-          ? `${sensor.title} is below the configured threshold of ${threshold} cm.`
-          : `${sensor.title} exceeds the configured threshold of ${threshold}.`;
+  sensor.key === "distance"
+    ? `${sensor.title} is below the configured threshold of ${threshold} cm.`
+    : sensor.key === "light"
+      ? `${sensor.title} is below the configured low-light threshold of ${threshold}.`
+      : `${sensor.title} exceeds the configured threshold of ${threshold}.`;
+      
 
       alertQueueRef.current = alertQueueRef.current
         .then(async () => {
