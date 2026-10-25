@@ -844,6 +844,10 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
           <Link href="/thresholds" style={navLinkStyle}>
             Alert Settings
           </Link>
+          <Link href="/weekly-report" style={navLinkStyle}>
+            Weekly AI Report
+          </Link>
+\
 
         </nav>
 
