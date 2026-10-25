@@ -1,9 +1,10 @@
-
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
+import { browserLocalPersistence, setPersistence } from "firebase/auth";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -11,7 +12,6 @@ import {
   signOut,
   reload,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,129 +19,121 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<"error" | "success">(
-    "error"
-  );
+  const [messageType, setMessageType] = useState<"error" | "success">("error");
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  
-const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMessage("");
+    setLoading(true);
 
-  setMessage("");
-  setLoading(true);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
 
-  try {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email.trim(),
-      password
-    );
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
 
-    const user = userCredential.user;
+      const user = userCredential.user;
+      await reload(user);
 
-    await reload(user);
+      if (!user.emailVerified) {
+        await signOut(auth);
+        setMessageType("error");
+        setMessage(
+          "Your email is not verified. Please check your inbox and spam folder, or use the Resend verification email option below."
+        );
+        return;
+      }
 
-    
-if (!user.emailVerified) {
-  await signOut(auth);
+      router.replace("/dashboard");
+    } catch (error: unknown) {
+      console.error("LOGIN ERROR:", error);
 
-  setMessageType("error");
-  setMessage(
-    "Your email is not verified. Please check your inbox and spam folder, or use the Resend verification email option below."
-  );
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : "";
 
-  return;
-}
+      let friendlyMessage = "We couldn't sign you in. Please try again.";
 
+      if (
+        code === "auth/invalid-credential" ||
+        code === "auth/wrong-password" ||
+        code === "auth/user-not-found"
+      ) {
+        friendlyMessage =
+          "Incorrect email or password. Please check your details.";
+      } else if (code === "auth/invalid-email") {
+        friendlyMessage = "Please enter a valid email address.";
+      } else if (code === "auth/too-many-requests") {
+        friendlyMessage =
+          "Too many attempts. Please wait a while before trying again.";
+      } else if (code === "auth/network-request-failed") {
+        friendlyMessage =
+          "Network error. Check your internet connection and try again.";
+      } else if (code === "auth/operation-not-allowed") {
+        friendlyMessage =
+          "This sign-in method is not enabled in Firebase.";
+      }
 
-    router.replace("/dashboard");
-  } catch (error: unknown) {
-    console.error("LOGIN ERROR:", error);
-    const code =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error
-        ? String(error.code)
-        : "";
-
-    let friendlyMessage =
-      "We couldn't sign you in. Please try again.";
-
-    if (
-      code === "auth/invalid-credential" ||
-      code === "auth/wrong-password" ||
-      code === "auth/user-not-found"
-    ) {
-      friendlyMessage =
-        "Incorrect email or password. Please check your details.";
-    } else if (code === "auth/invalid-email") {
-      friendlyMessage = "Please enter a valid email address.";
-    } else if (code === "auth/too-many-requests") {
-      friendlyMessage =
-        "Too many attempts. Please wait a while before trying again.";
-    } else if (code === "auth/network-request-failed") {
-      friendlyMessage =
-        "Network error. Check your internet connection and try again.";
-    } else if (code === "auth/operation-not-allowed") {
-      friendlyMessage =
-        "This sign-in method is not enabled in Firebase.";
+      setMessageType("error");
+      setMessage(friendlyMessage);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setMessageType("error");
-    setMessage(friendlyMessage);
-  } finally {
-    setLoading(false);
-  }
-};
-const handleResendVerification = async () => {
-  if (!email.trim() || !password) {
-    setMessageType("error");
-    setMessage("Enter your email and password first.");
-    return;
-  }
-
-  setMessage("");
-  setResetLoading(true);
-
-  try {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email.trim(),
-      password
-    );
-
-    const user = userCredential.user;
-
-    await reload(user);
-
-    if (user.emailVerified) {
-      await signOut(auth);
-      setMessageType("success");
-      setMessage("Your email is already verified. You can sign in now.");
+  const handleResendVerification = async () => {
+    if (!email.trim() || !password) {
+      setMessageType("error");
+      setMessage("Enter your email and password first.");
       return;
     }
 
-    await sendEmailVerification(user);
-    await signOut(auth);
+    setMessage("");
+    setResetLoading(true);
 
-    setMessageType("success");
-    setMessage("Verification email sent. Please check your inbox and spam folder.");
-  } catch (error) {
-    console.error("RESEND VERIFICATION ERROR:", error);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
 
-    setMessageType("error");
-    setMessage(
-      "Unable to send the verification email. Please check your details and try again later."
-    );
-  } finally {
-    setResetLoading(false);
-  }
-};
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
 
+      const user = userCredential.user;
+      await reload(user);
 
+      if (user.emailVerified) {
+        await signOut(auth);
+        setMessageType("success");
+        setMessage("Your email is already verified. You can sign in now.");
+        return;
+      }
+
+      await sendEmailVerification(user);
+      await signOut(auth);
+
+      setMessageType("success");
+      setMessage(
+        "Verification email sent. Please check your inbox and spam folder."
+      );
+    } catch (error) {
+      console.error("RESEND VERIFICATION ERROR:", error);
+      setMessageType("error");
+      setMessage(
+        "Unable to send the verification email. Please check your details and try again later."
+      );
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handlePasswordReset = async () => {
     const trimmedEmail = email.trim();
@@ -163,9 +155,7 @@ const handleResendVerification = async () => {
       setMessageType("success");
     } catch (error: unknown) {
       const code =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error
+        typeof error === "object" && error !== null && "code" in error
           ? String(error.code)
           : "";
 
@@ -209,17 +199,15 @@ const handleResendVerification = async () => {
           </h1>
 
           <p style={styles.introText}>
-            Sign in to access your environmental monitoring dashboard,
-            review sensor history, and manage your safety alerts.
+            Sign in to access your environmental monitoring dashboard, review
+            sensor history, and manage your safety alerts.
           </p>
 
           <div style={styles.benefits}>
             <div style={styles.benefit}>
               <span style={styles.benefitIcon}>📊</span>
               <div>
-                <strong style={styles.benefitTitle}>
-                  Your sensor history
-                </strong>
+                <strong style={styles.benefitTitle}>Your sensor history</strong>
                 <p style={styles.benefitText}>
                   Review recorded measurements and trends.
                 </p>
@@ -229,9 +217,7 @@ const handleResendVerification = async () => {
             <div style={styles.benefit}>
               <span style={styles.benefitIcon}>🔔</span>
               <div>
-                <strong style={styles.benefitTitle}>
-                  Your safety alerts
-                </strong>
+                <strong style={styles.benefitTitle}>Your safety alerts</strong>
                 <p style={styles.benefitText}>
                   Check warnings and their acknowledgement status.
                 </p>
@@ -241,9 +227,7 @@ const handleResendVerification = async () => {
             <div style={styles.benefit}>
               <span style={styles.benefitIcon}>⚙️</span>
               <div>
-                <strong style={styles.benefitTitle}>
-                  Your preferences
-                </strong>
+                <strong style={styles.benefitTitle}>Your preferences</strong>
                 <p style={styles.benefitText}>
                   Access your saved profile and settings.
                 </p>
@@ -297,77 +281,59 @@ const handleResendVerification = async () => {
                 </button>
               </div>
 
-              
+              <div style={{ position: "relative", width: "100%" }}>
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="Enter your password"
+                  style={{ ...styles.input, paddingRight: "45px" }}
+                  disabled={loading}
+                />
 
-
-<div style={{ position: "relative", width: "100%" }}>
-  <input
-    id="password"
-    name="password"
-    type={showPassword ? "text" : "password"}
-    autoComplete="current-password"
-    value={password}
-    onChange={(e) => setPassword(e.target.value)}
-    required
-    placeholder="Enter your password"
-    style={{ ...styles.input, paddingRight: "45px" }}
-    disabled={loading}
-  />
-
-  <button
-    type="button"
-    onClick={() => setShowPassword((previous) => !previous)}
-    aria-label={showPassword ? "Hide password" : "Show password"}
-    style={{
-      position: "absolute",
-      right: "12px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      background: "transparent",
-      border: "none",
-      padding: "4px",
-      cursor: "pointer",
-      color: "#94a3b8",
-      display: "flex",
-      alignItems: "center",
-    }}
-  >
-    {showPassword ? (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M3 3l18 18" />
-        <path d="M10.6 10.6a2 2 0 002.8 2.8" />
-        <path d="M9.9 5.2A11 11 0 0121 12a11.8 11.8 0 01-3.1 4.1" />
-        <path d="M6.2 6.2A12 12 0 003 12s3 7 9 7a9.7 9.7 0 004.2-.9" />
-      </svg>
-    ) : (
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    )}
-  </button>
-</div>
-
-
-
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((previous) => !previous)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  style={styles.passwordToggle}
+                >
+                  {showPassword ? (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+                      <path d="M9.9 5.2A11 11 0 0121 12a11.8 11.8 0 01-3.1 4.1" />
+                      <path d="M6.2 6.2A12 12 0 003 12s3 7 9 7a9.7 9.7 0 004.2-.9" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {message && (
@@ -396,36 +362,27 @@ const handleResendVerification = async () => {
             >
               {loading ? "Signing in..." : "Sign In →"}
             </button>
-            
-<button
-  type="button"
-  onClick={handleResendVerification}
-  disabled={loading || resetLoading}
-  style={styles.forgotButton}
->
-  Resend verification email
-</button>
 
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={loading || resetLoading}
+              style={styles.forgotButton}
+            >
+              Resend verification email
+            </button>
           </form>
 
-          
-<div style={styles.separator}>
-  <span />
-  <span
-    style={{
-      ...styles.separatorText,
-      textAlign: "center",
-      flex: 1,
-    }}
-  >
-    NEW TO SMART SPECTACLES?
-  </span>
-  <span />
-</div>
-
+          <div style={styles.separator}>
+            <span />
+            <span style={styles.separatorText}>
+              NEW TO SMART SPECTACLES?
+            </span>
+            <span />
+          </div>
 
           <p style={styles.signupText}>
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/signup" style={styles.signupLink}>
               Create one
             </Link>
@@ -649,6 +606,19 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     cursor: "pointer",
   },
+  passwordToggle: {
+    position: "absolute",
+    right: 12,
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "transparent",
+    border: "none",
+    padding: 4,
+    cursor: "pointer",
+    color: "#94a3b8",
+    display: "flex",
+    alignItems: "center",
+  },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -699,6 +669,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 9,
     fontWeight: 800,
     letterSpacing: "0.8px",
+    textAlign: "center",
+    flex: 1,
   },
   signupText: {
     textAlign: "center",

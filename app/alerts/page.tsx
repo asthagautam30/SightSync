@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import {
   collection,
@@ -112,6 +113,39 @@ function formatSensorLabel(sensor: string) {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
+
+function getFriendlyAlertMessage(sensor: string) {
+  const category = getCategory(sensor);
+
+  if (category === "light") return "Light level was too high";
+  if (category === "uv") return "UV level was too high";
+  if (category === "gas") return "Gas level was too high";
+  if (category === "visualComfort") return "Lighting may cause eye discomfort";
+
+  const normalized = sensor.toLowerCase();
+  if (normalized.includes("distance") || normalized.includes("proximity")) {
+    return "An object was too close";
+  }
+
+  return "Alert detected";
+}
+
+function getAlertLimit(message: string): string | null {
+  // Read a limit from the existing saved message when one is present.
+  const patterns = [
+    /(?:configured\s+)?threshold\s+(?:of\s+)?(-?\d+(?:\.\d+)?)/i,
+    /(?:set\s+)?limit\s+(?:of\s+)?(-?\d+(?:\.\d+)?)/i,
+    /(?:threshold|limit)\s*[:=]\s*(-?\d+(?:\.\d+)?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
+}
+
 function parseAlertDate(value: unknown): Date | null {
   if (!value) return null;
 
@@ -203,7 +237,7 @@ function FilterButton({
   onClick,
 }: {
   active: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -234,7 +268,7 @@ function FilterGroup({
 }: {
   title: string;
   summary: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -399,11 +433,17 @@ function AlertCard({
               margin: "12px 0",
             }}
           >
-            {alert.message}
+            {getFriendlyAlertMessage(alert.sensor)}
+          </p>
+
+          <p style={{ color: C.muted, fontSize: 12, margin: "0 0 6px" }}>
+            Recorded: {alert.value ?? "Not available"}
+            {getAlertLimit(alert.message) !== null
+              ? ` · Limit: ${getAlertLimit(alert.message)}`
+              : ""}
           </p>
 
           <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>
-            Reading: {alert.value ?? "Not available"} ·{" "}
             {formatDate(alert.timestamp)}
           </p>
         </div>
@@ -1041,7 +1081,7 @@ export default function AlertsPage() {
   );
 }
 
-const pageStyle: React.CSSProperties = {
+const pageStyle: CSSProperties = {
   minHeight: "100vh",
   padding: "32px 20px",
   background:
@@ -1050,12 +1090,12 @@ const pageStyle: React.CSSProperties = {
   fontFamily: "Arial, sans-serif",
 };
 
-const containerStyle: React.CSSProperties = {
+const containerStyle: CSSProperties = {
   maxWidth: 1100,
   margin: "0 auto",
 };
 
-const sectionStyle: React.CSSProperties = {
+const sectionStyle: CSSProperties = {
   background: C.card,
   border: `1px solid ${C.border}`,
   borderRadius: 16,
@@ -1064,7 +1104,7 @@ const sectionStyle: React.CSSProperties = {
   boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
 };
 
-const innerCardStyle: React.CSSProperties = {
+const innerCardStyle: CSSProperties = {
   background: "#081322",
   border: `1px solid ${C.border}`,
   borderRadius: 12,
@@ -1072,7 +1112,7 @@ const innerCardStyle: React.CSSProperties = {
   color: C.text,
 };
 
-const headerStyle: React.CSSProperties = {
+const headerStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -1081,7 +1121,7 @@ const headerStyle: React.CSSProperties = {
   marginBottom: 26,
 };
 
-const eyebrowStyle: React.CSSProperties = {
+const eyebrowStyle: CSSProperties = {
   color: C.cyan,
   fontSize: 11,
   fontWeight: 800,
@@ -1089,7 +1129,7 @@ const eyebrowStyle: React.CSSProperties = {
   margin: "0 0 10px",
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   color: C.muted,
   fontSize: 10,
   fontWeight: 800,
@@ -1097,13 +1137,13 @@ const labelStyle: React.CSSProperties = {
   margin: "0 0 8px",
 };
 
-const filterRowStyle: React.CSSProperties = {
+const filterRowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 6,
 };
 
-const compactFiltersGridStyle: React.CSSProperties = {
+const compactFiltersGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
   gap: 10,
@@ -1111,12 +1151,12 @@ const compactFiltersGridStyle: React.CSSProperties = {
   marginTop: 18,
 };
 
-const compactFilterWrapStyle: React.CSSProperties = {
+const compactFilterWrapStyle: CSSProperties = {
   minWidth: 0,
   position: "relative",
 };
 
-const compactFilterButtonStyle: React.CSSProperties = {
+const compactFilterButtonStyle: CSSProperties = {
   width: "100%",
   display: "flex",
   alignItems: "center",
@@ -1131,7 +1171,7 @@ const compactFilterButtonStyle: React.CSSProperties = {
   textAlign: "left",
 };
 
-const compactFilterTitleStyle: React.CSSProperties = {
+const compactFilterTitleStyle: CSSProperties = {
   display: "block",
   color: C.muted,
   fontSize: 10,
@@ -1140,7 +1180,7 @@ const compactFilterTitleStyle: React.CSSProperties = {
   marginBottom: 5,
 };
 
-const compactFilterSummaryStyle: React.CSSProperties = {
+const compactFilterSummaryStyle: CSSProperties = {
   display: "block",
   color: C.text,
   fontSize: 13,
@@ -1148,7 +1188,7 @@ const compactFilterSummaryStyle: React.CSSProperties = {
   overflowWrap: "anywhere",
 };
 
-const compactFilterPanelStyle: React.CSSProperties = {
+const compactFilterPanelStyle: CSSProperties = {
   marginTop: 7,
   padding: 12,
   background: "#081322",
@@ -1159,7 +1199,7 @@ const compactFilterPanelStyle: React.CSSProperties = {
   gap: 10,
 };
 
-const dateGridStyle: React.CSSProperties = {
+const dateGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 12,
@@ -1167,14 +1207,14 @@ const dateGridStyle: React.CSSProperties = {
   marginTop: 14,
 };
 
-const fieldLabelStyle: React.CSSProperties = {
+const fieldLabelStyle: CSSProperties = {
   display: "grid",
   gap: 8,
   color: C.muted,
   fontSize: 12,
 };
 
-const dateInputStyle: React.CSSProperties = {
+const dateInputStyle: CSSProperties = {
   background: "#102239",
   color: C.text,
   border: `1px solid ${C.border}`,
@@ -1186,14 +1226,14 @@ const dateInputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const tabGridStyle: React.CSSProperties = {
+const tabGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: 8,
   marginBottom: 16,
 };
 
-const tabStyle: React.CSSProperties = {
+const tabStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
@@ -1207,14 +1247,14 @@ const tabStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-const summaryStripStyle: React.CSSProperties = {
+const summaryStripStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
   gap: 12,
   marginBottom: 22,
 };
 
-const summaryItemStyle: React.CSSProperties = {
+const summaryItemStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -1224,14 +1264,14 @@ const summaryItemStyle: React.CSSProperties = {
   padding: 18,
 };
 
-const summaryLabelStyle: React.CSSProperties = {
+const summaryLabelStyle: CSSProperties = {
   color: C.muted,
   fontSize: 11,
   letterSpacing: 1,
   fontWeight: 800,
 };
 
-const primaryButtonStyle: React.CSSProperties = {
+const primaryButtonStyle: CSSProperties = {
   display: "inline-block",
   border: `1px solid ${C.cyan}`,
   background: C.cyan,
@@ -1244,7 +1284,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const secondaryButtonStyle: React.CSSProperties = {
+const secondaryButtonStyle: CSSProperties = {
   display: "inline-block",
   border: `1px solid ${C.border}`,
   background: "#102239",
@@ -1256,7 +1296,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const listHeaderStyle: React.CSSProperties = {
+const listHeaderStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -1265,7 +1305,7 @@ const listHeaderStyle: React.CSSProperties = {
   marginBottom: 14,
 };
 
-const footerStyle: React.CSSProperties = {
+const footerStyle: CSSProperties = {
   textAlign: "center",
   color: "#64748b",
   fontSize: 12,
