@@ -454,7 +454,18 @@ const sensorRef = ref(
 
         previousWarningsRef.current[sensor.key] === true;
 
-      if (isWarning && !wasWarning) {
+      if (
+  isWarning &&
+  !wasWarning &&
+  alertManager.shouldSend({
+    key: `sensor:${sensor.key}`,
+    severity:
+      sensor.key === "uv" || sensor.key === "gas"
+        ? "critical"
+        : "warning",
+    message: sensor.message,
+  })
+) {
 
         const value = data[sensor.key] ?? null;
 
@@ -512,7 +523,16 @@ const sensorRef = ref(
     const wasWarning =
       previousWarningsRef.current.visualComfort === true;
 
-    if (isWarning && !wasWarning) {
+ if (
+  isWarning &&
+  !wasWarning &&
+  alertManager.shouldSend({
+    key: "visualComfort",
+    severity: "warning",
+    message:
+      "Visual Comfort warning: take a break from close or prolonged viewing.",
+  })
+) {
       alertQueueRef.current = alertQueueRef.current
         .then(async () => {
           await saveSensorAlert(user.uid, {
@@ -552,7 +572,18 @@ useEffect(() => {
       previousThresholdStatesRef.current[sensor.key] === true;
 
     // Save only when the sensor enters the warning state.
-    if (result && !wasWarning) {
+     if (
+  result &&
+  !wasWarning &&
+  alertManager.shouldSend({
+    key: `sensor:${sensor.key}`,
+    severity:
+      sensor.key === "uv" || sensor.key === "gas"
+        ? "critical"
+        : "warning",
+    message: `${sensor.title} threshold warning`,
+  })
+) {
       const threshold = activeThresholds[sensor.key];
 
       const message =
