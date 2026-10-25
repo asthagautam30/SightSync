@@ -1,4 +1,4 @@
-import type { SensorKey } from "@/lib/daily-sensor-summary";
+ import type { SensorKey } from "@/lib/daily-sensor-summary";
 
 export type SafetySeverity = "info" | "warning" | "urgent";
 
@@ -20,18 +20,27 @@ export type SafetyPrecaution = {
   personalNote?: string;
 };
 
+type HistoricalContext = {
+  anomalyDetected: boolean;
+  baselineAvailable: boolean;
+  baselineAverage: number | null;
+  readingCount: number;
+  unusualCount: number;
+};
+
 type PrecautionInput = {
   sensor: SensorKey;
   value: number | null;
   threshold: number;
   exceeded: boolean;
   profile?: SafetyProfile | null;
+  history?: HistoricalContext | null;
 };
 
 export function getSafetyPrecaution(
   input: PrecautionInput
 ): SafetyPrecaution | null {
-  const { sensor, value, threshold, exceeded, profile } = input;
+  const { sensor, value, threshold, exceeded, profile, history } = input;
 
   if (
     value === null ||
@@ -63,7 +72,6 @@ export function getSafetyPrecaution(
         precaution.personalNote =
           "Since your profile indicates substantial outdoor time, consider planning shade breaks during outdoor activities.";
       }
-
       break;
 
     case "gas":
@@ -84,7 +92,6 @@ export function getSafetyPrecaution(
         precaution.personalNote =
           "Because your profile includes indoor activity, pay attention to possible indoor sources. Do not investigate a suspected gas leak yourself.";
       }
-
       break;
 
     case "light":
@@ -106,7 +113,6 @@ export function getSafetyPrecaution(
         precaution.personalNote =
           "Your profile indicates substantial screen time. Consider regular breaks and comfortable screen brightness; this sensor cannot determine whether screen light is harmful.";
       }
-
       break;
 
     case "distance":
@@ -119,15 +125,29 @@ export function getSafetyPrecaution(
           "Slow down or stop if safe, check the path ahead, and avoid relying on the sensor alone to navigate.",
         severity: "warning",
       };
-
       break;
 
     default:
       return null;
   }
 
-  // Personalisation changes advice, never the configured safety threshold.
-  // High sensitivity can add context, but does not establish a real hazard.
+  // Add historical context only when a baseline is available.
+  // Historical patterns never change the threshold or hazard severity.
+  if (
+    history?.baselineAvailable &&
+    history.anomalyDetected
+  ) {
+    const historyNote =
+      history.baselineAverage !== null
+        ? `Today's sensor pattern differs from the historical baseline (average: ${history.baselineAverage}). Review the readings and their context; this pattern alone does not confirm a hazard.`
+        : "Today's sensor pattern differs from the available historical baseline. Review the readings and their context; this pattern alone does not confirm a hazard.";
+
+    precaution.personalNote = precaution.personalNote
+      ? `${precaution.personalNote} ${historyNote}`
+      : historyNote;
+  }
+
+  // Personalise advice without changing configured safety thresholds.
   if (
     profile?.warningSensitivity?.toLowerCase().includes("high") &&
     !precaution.personalNote
