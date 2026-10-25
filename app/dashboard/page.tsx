@@ -20,6 +20,10 @@ import { useAuth } from "../auth-provider";
 import { saveSensorReading } from "@/lib/sensor-history";
 
 import { saveSensorAlert } from "@/lib/alert-history";
+import {
+  getDailySensorSummary,
+  type DailySensorSummary,
+} from "@/lib/daily-sensor-summary";
 
 import {
 
@@ -147,6 +151,8 @@ useEffect(() => {
 
   return () => window.clearInterval(intervalId);
 }, []);
+  const [historicalSummaries, setHistoricalSummaries] =
+  useState<DailySensorSummary[]>([]);
   const [safetyProfile, setSafetyProfile] = useState<{
   screenTime?: string;
   outdoorTime?: string;
@@ -181,7 +187,41 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
 >({});
 
   const alertQueueRef = useRef<Promise<void>>(Promise.resolve());
+   useEffect(() => {
+  if (loading || !user) {
+    setHistoricalSummaries([]);
+    return;
+  }
 
+  let cancelled = false;
+
+  async function loadHistoricalSummaries() {
+    try {
+      const summaries = await getDailySensorSummary(user!.uid);
+
+      if (!cancelled) {
+        setHistoricalSummaries(summaries);
+      }
+    } catch (error) {
+      console.error("Could not load historical sensor summaries:", error);
+
+      if (!cancelled) {
+        setHistoricalSummaries([]);
+      }
+    }
+  }
+
+  void loadHistoricalSummaries();
+
+  const intervalId = window.setInterval(() => {
+    void loadHistoricalSummaries();
+  }, 5 * 60 * 1000);
+
+  return () => {
+    cancelled = true;
+    window.clearInterval(intervalId);
+  };
+}, [user, loading]);
   useEffect(() => {
   if (loading) return;
 
@@ -676,13 +716,25 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
   const exceeded =
     checkThreshold(sensor.key, value, activeThresholds) === true;
+  const history = historicalSummaries.find(
+  (summary) => summary.sensor === sensor.key
+);
 
-  const precaution = getSafetyPrecaution({
+   const precaution = getSafetyPrecaution({
   sensor: sensor.key,
   value,
   threshold,
   exceeded,
   profile: safetyProfile,
+  history: history
+    ? {
+        anomalyDetected: history.anomalyDetected,
+        baselineAvailable: history.baselineAvailable,
+        baselineAverage: history.baselineAverage,
+        readingCount: history.readingCount,
+        unusualCount: history.unusualCount,
+      }
+    : null,
 });
 
   return precaution ? [precaution] : [];
@@ -1142,7 +1194,20 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
               <p style={{ margin: 0, lineHeight: 1.6 }}>
                 <strong>What to do:</strong> {precaution.action}
+
               </p>
+              {precaution.personalNote && (
+  <p
+    style={{
+      margin: "10px 0 0",
+      lineHeight: 1.6,
+      color: "#a5f3fc",
+    }}
+  >
+    <strong>Personalised guidance:</strong>{" "}
+    {precaution.personalNote}
+  </p>
+)}
             </div>
           ))}
         </div>
