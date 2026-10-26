@@ -51,6 +51,13 @@ type AdaptiveSensorResult = {
   baseline?: number;
   learningStatus?: string;
   reading?: number;
+  baselineEstablished?: boolean;
+  initialSamplesCollected?: number;
+  initialSamplesRequired?: number;
+  batchSamplesCollected?: number;
+  batchSamplesRequired?: number;
+  consecutiveShiftBatches?: number;
+  shiftBatchesRequired?: number;
   warning?: boolean;
   validatedForRealWorldUse?: boolean;
 };
@@ -799,7 +806,11 @@ useEffect(() => {
     if (fixedWarning === null) return null;
     if (!adaptiveIsFresh) return fixedWarning;
 
-    const adaptiveThreshold = adaptiveData?.sensors?.[sensor]?.adaptiveThreshold;
+    const adaptiveSensor = adaptiveData?.sensors?.[sensor];
+    // Adaptive thresholds do not influence warnings until the initial
+    // baseline has been established from enough valid readings.
+    if (adaptiveSensor?.baselineEstablished !== true) return fixedWarning;
+    const adaptiveThreshold = adaptiveSensor.adaptiveThreshold;
     if (typeof adaptiveThreshold !== "number" || !Number.isFinite(adaptiveThreshold)) {
       return fixedWarning;
     }
@@ -860,9 +871,11 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
   const value = data?.[sensor.key] ?? null;
 
   const fixedThreshold = activeThresholds[sensor.key];
-  const adaptiveThreshold = adaptiveIsFresh
-    ? adaptiveData?.sensors?.[sensor.key]?.adaptiveThreshold
-    : undefined;
+  const adaptiveSensor = adaptiveData?.sensors?.[sensor.key];
+  const adaptiveThreshold =
+    adaptiveIsFresh && adaptiveSensor?.baselineEstablished === true
+      ? adaptiveSensor.adaptiveThreshold
+      : undefined;
   const threshold =
     typeof adaptiveThreshold === "number" && Number.isFinite(adaptiveThreshold)
       ? sensor.key === "uv" || sensor.key === "gas"
@@ -1158,7 +1171,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
                     <p style={{ margin: "4px 0" }}>
                       Effective threshold:{" "}
-                      {adaptiveIsFresh
+                      {adaptiveIsFresh && sensor?.baselineEstablished === true
                         ? (key === "uv" || key === "gas"
                             ? Math.min(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key])
                             : Math.max(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key]))
@@ -1170,26 +1183,48 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
                     </p>
 
                     <p style={{ margin: "4px 0" }}>
+                      Baseline progress: {sensor?.initialSamplesCollected ?? 0}/
+                      {sensor?.initialSamplesRequired ?? 60} readings
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Batch progress: {sensor?.batchSamplesCollected ?? 0}/
+                      {sensor?.batchSamplesRequired ?? 20} readings
+                      {" · "}Confirmed shift batches: {sensor?.consecutiveShiftBatches ?? 0}/
+                      {sensor?.shiftBatchesRequired ?? 3}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
                       Learning status: {
   sensor?.learningStatus === "collecting_baseline"
-    ? "📊 Collecting baseline"
-    : sensor?.learningStatus === "paused_hazard"
-      ? "⚠️ Paused — Potential Hazard"
-      : sensor?.learningStatus === "learning"
-        ? "🧠 Learning"
-        : sensor?.learningStatus === "baseline_ready"
-          ? "✅ Baseline Ready"
-          : sensor?.learningStatus ?? "Waiting for data"
+    ? "📊 Collecting initial baseline"
+    : sensor?.learningStatus === "baseline_established"
+      ? "✅ Initial baseline established"
+      : sensor?.learningStatus === "checking_new_normal"
+        ? "🔎 Checking whether change persists"
+        : sensor?.learningStatus === "monitoring_stability"
+          ? "👀 Monitoring stability"
+          : sensor?.learningStatus === "adapting_gradually"
+            ? "🧠 Adapting gradually"
+            : sensor?.learningStatus === "paused_hazard"
+              ? "⚠️ Paused — Potential Hazard"
+              : sensor?.learningStatus === "paused_unstable"
+                ? "⏸️ Paused — Unstable readings"
+                : sensor?.learningStatus === "paused_anomaly"
+                  ? "⏸️ Paused — Unusual reading"
+                  : sensor?.learningStatus ?? "Waiting for data"
 }
                     </p>
 
                     <p style={{ margin: "4px 0" }}>
                       Experimental warning:{" "}
-                      {sensor?.warning === true
-                        ? "Yes"
-                        : sensor?.warning === false
-                          ? "No"
-                          : "Unknown"}
+                      {sensor?.baselineEstablished !== true
+                        ? "Not active — baseline not validated"
+                        : sensor?.warning === true
+                          ? "Yes"
+                          : sensor?.warning === false
+                            ? "No"
+                            : "Unknown"}
                     </p>
                   </div>
                 );
