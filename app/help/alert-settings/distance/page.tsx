@@ -13,7 +13,7 @@ export default function DistanceAlertGuidePage() {
         </p>
         <h2 style={styles.heading}>Choosing a value</h2>
         <ul style={styles.list}>
-          <li>Start with the project's default value if you are unsure.</li>
+          <li>Start with the project&apos;s default value if you are unsure.</li>
           <li>Measure or observe the distance readings in the setup you are demonstrating.</li>
           <li>Choose a custom limit that matches your intended use and the direction of the existing alert logic.</li>
         </ul>
