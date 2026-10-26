@@ -448,8 +448,13 @@ useEffect(() => {
 
   const unsubscribe = onValue(adaptiveRef, (snapshot) => {
     if (snapshot.exists()) {
-      setAdaptiveData(snapshot.val() as AdaptiveFirebaseData);
-      setAdaptiveLastUpdated(Date.now());
+      const adaptiveSnapshot = snapshot.val() as AdaptiveFirebaseData;
+      setAdaptiveData(adaptiveSnapshot);
+      setAdaptiveLastUpdated(
+        typeof adaptiveSnapshot.updatedAt === "number"
+          ? adaptiveSnapshot.updatedAt
+          : null
+      );
     } else {
   setAdaptiveData(null);
   setAdaptiveLastUpdated(null);
@@ -707,11 +712,7 @@ useEffect(() => {
   for (const sensor of SENSOR_DETAILS) {
     const value = data[sensor.key] ?? null;
 
-    const result = checkThreshold(
-      sensor.key,
-      value,
-      activeThresholds
-    );
+    const result = getCombinedThresholdWarning(sensor.key, value);
 
     // Ignore sensors without a valid reading.
     if (result === null) continue;
@@ -776,6 +777,43 @@ useEffect(() => {
   thresholdsLoading,
   activeThresholds,
 ]);
+  // Adaptive results can add earlier warnings, but never relax the
+  // user's fixed threshold settings. Ignore missing or stale adaptive data.
+  const adaptiveIsFresh =
+    adaptiveData !== null &&
+    adaptiveLastUpdated !== null &&
+    statusTime > 0 &&
+    statusTime - adaptiveLastUpdated >= -3000 &&
+    statusTime - adaptiveLastUpdated <= 20000;
+
+  const getCombinedThresholdWarning = (
+    sensor: SensorKey,
+    value: number | null
+  ): boolean | null => {
+    const fixedWarning = checkThreshold(sensor, value, activeThresholds);
+    if (fixedWarning === null) return null;
+    if (!adaptiveIsFresh) return fixedWarning;
+
+    const adaptiveThreshold = adaptiveData?.sensors?.[sensor]?.adaptiveThreshold;
+    if (typeof adaptiveThreshold !== "number" || !Number.isFinite(adaptiveThreshold)) {
+      return fixedWarning;
+    }
+
+    const fixedThreshold = activeThresholds[sensor];
+    const effectiveThreshold =
+      sensor === "uv" || sensor === "gas"
+        ? Math.min(fixedThreshold, adaptiveThreshold)
+        : Math.max(fixedThreshold, adaptiveThreshold);
+
+    const adaptiveWarning =
+      sensor === "uv" || sensor === "gas"
+        ? value! > effectiveThreshold
+        : value! < effectiveThreshold;
+
+    // The fixed warning is always included; adaptation can only add sensitivity.
+    return fixedWarning || adaptiveWarning;
+  };
+
   const handleLogout = async () => {
 
     setLoggingOut(true);
@@ -808,11 +846,7 @@ useEffect(() => {
   const firebaseWarning = data?.warnings?.[key] === true;
 
   const thresholdWarning =
-    checkThreshold(
-      key,
-      data?.[key] ?? null,
-      activeThresholds
-    ) === true;
+    getCombinedThresholdWarning(key, data?.[key] ?? null) === true;
 
   return firebaseWarning || thresholdWarning;
 }).length;
@@ -820,10 +854,19 @@ useEffect(() => {
 const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
   const value = data?.[sensor.key] ?? null;
 
-  const threshold = activeThresholds[sensor.key];
+  const fixedThreshold = activeThresholds[sensor.key];
+  const adaptiveThreshold = adaptiveIsFresh
+    ? adaptiveData?.sensors?.[sensor.key]?.adaptiveThreshold
+    : undefined;
+  const threshold =
+    typeof adaptiveThreshold === "number" && Number.isFinite(adaptiveThreshold)
+      ? sensor.key === "uv" || sensor.key === "gas"
+        ? Math.min(fixedThreshold, adaptiveThreshold)
+        : Math.max(fixedThreshold, adaptiveThreshold)
+      : fixedThreshold;
 
   const thresholdExceeded =
-    checkThreshold(sensor.key, value, activeThresholds) === true;
+    getCombinedThresholdWarning(sensor.key, value) === true;
 
   const firebaseWarning =
     data?.warnings?.[sensor.key] === true;
@@ -1379,10 +1422,9 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
                 warning={
   data?.warnings?.[sensor.key] === true ||
-  checkThreshold(
+  getCombinedThresholdWarning(
     sensor.key,
-    data?.[sensor.key] ?? null,
-    activeThresholds
+    data?.[sensor.key] ?? null
   ) === true
 }
 
