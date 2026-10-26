@@ -723,8 +723,6 @@ import Link from "next/link";
 // }
 
 
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
