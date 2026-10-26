@@ -1017,7 +1017,7 @@ export default function HistoryPage() {
                             type="monotone"
                             dataKey="value"
                             stroke="none"
-                            dot={(props: any) => {
+                            dot={(props: { payload?: { id?: string } }) => {
                               const isMax =
                                 maxPoint !== null &&
                                 props.payload.id === maxPoint.id;
