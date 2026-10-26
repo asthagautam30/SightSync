@@ -276,7 +276,7 @@
 //         >
 //           <span style={{ fontSize: "25px" }}>👓</span>
 //           Smart Spectacles
-//         </a>
+//         </Link>
 
 //         <div style={{ marginBottom: "30px" }}>
 //           <div
@@ -1088,7 +1088,7 @@ export default function ProfilePage() {
       }}
     >
       <div style={{ maxWidth: "760px", margin: "0 auto" }}>
-        <a
+        <Link
           href="/"
           style={{
             display: "inline-flex",
