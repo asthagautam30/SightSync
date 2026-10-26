@@ -13,9 +13,9 @@ export default function GasAlertGuidePage() {
         </p>
         <h2 style={styles.heading}>Choosing a value</h2>
         <ul style={styles.list}>
-          <li>Start with the project's default value if you are unsure.</li>
+          <li>Start with the project&apos;s default value if you are unsure.</li>
           <li>Observe typical readings in your own setup.</li>
-          <li>Choose a custom warning limit only after checking how the project's alert logic uses that reading.</li>
+          <li>Choose a custom warning limit only after checking how the project&apos;s alert logic uses that reading.</li>
         </ul>
         <p style={styles.note}>
           Demo values are not calibrated gas measurements and must not be used
