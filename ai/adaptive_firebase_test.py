@@ -9,8 +9,14 @@ import time
 import urllib.error
 import urllib.request
 
-from adaptive_thresholds import create_engines
-from adaptive_state import export_engine_state, restore_engine_state
+try:
+    # Works when launched as: python ai/adaptive_firebase_test.py
+    from adaptive_thresholds import create_engines
+    from adaptive_state import export_engine_state, restore_engine_state
+except ModuleNotFoundError:
+    # Also works when imported from the repository root for diagnostics/tests.
+    from ai.adaptive_thresholds import create_engines
+    from ai.adaptive_state import export_engine_state, restore_engine_state
 
 FIREBASE_BASE = (
     "https://smart-spectacle-47402-default-rtdb.firebaseio.com/"
