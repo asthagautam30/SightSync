@@ -776,6 +776,9 @@ useEffect(() => {
   loading,
   thresholdsLoading,
   activeThresholds,
+  adaptiveData,
+  adaptiveLastUpdated,
+  statusTime,
 ]);
   // Adaptive results can add earlier warnings, but never relax the
   // user's fixed threshold settings. Ignore missing or stale adaptive data.
