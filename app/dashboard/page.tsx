@@ -46,6 +46,8 @@ type SensorKey = "uv" | "gas" | "light" | "distance";
 
 type AdaptiveSensorResult = {
   adaptiveThreshold?: number;
+  effectiveThreshold?: number;
+  fixedThreshold?: number;
   baseline?: number;
   learningStatus?: string;
   reading?: number;
@@ -1109,6 +1111,8 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
   {adaptiveLastUpdated
     ? new Date(adaptiveLastUpdated).toLocaleTimeString()
     : "Waiting for first update"}
+  {" · "}
+  {adaptiveIsFresh ? "Live adaptive results" : "Stale/unavailable — fixed thresholds only"}
 </p>
 
           {!adaptiveData?.sensors ? (
@@ -1145,7 +1149,20 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
                     </p>
 
                     <p style={{ margin: "4px 0" }}>
+                      Fixed safety threshold: {activeThresholds[key]}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
                       Adaptive threshold: {sensor?.adaptiveThreshold ?? "—"}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Effective threshold:{" "}
+                      {adaptiveIsFresh
+                        ? (key === "uv" || key === "gas"
+                            ? Math.min(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key])
+                            : Math.max(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key]))
+                        : activeThresholds[key]}
                     </p>
 
                     <p style={{ margin: "4px 0" }}>
