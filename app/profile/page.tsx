@@ -1103,7 +1103,7 @@ export default function ProfilePage() {
         >
           <span style={{ fontSize: "25px" }}>👓</span>
           Smart Spectacles
-        </a>
+        </Link>
 
         <div style={{ marginBottom: "30px" }}>
           <div
