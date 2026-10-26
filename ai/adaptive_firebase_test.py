@@ -86,7 +86,7 @@ def main():
     print("Smart Spectacles - Adaptive Threshold Test")
     print("Sensor readings: read from Firebase /current")
     print("Adaptive results: written to Firebase /adaptive")
-    print("Learning pauses when a warning is detected.")
+    print("Initial baseline: 60 valid readings; new-normal check: 3 batches of 20.")
     print("Press Ctrl+C to stop.")
     print("-" * 55)
 
@@ -131,11 +131,16 @@ def main():
                     reading_value,
                     hazardous=(fixed_warning or adaptive_warning),
                 )
-                effective_threshold = conservative_threshold(
-                    sensor,
-                    fixed_threshold,
-                    result["adaptiveThreshold"],
-                )
+                # Do not let adaptive results affect warnings until the initial
+                # baseline has been established from 60 valid readings.
+                if result["baselineEstablished"]:
+                    effective_threshold = conservative_threshold(
+                        sensor,
+                        fixed_threshold,
+                        result["adaptiveThreshold"],
+                    )
+                else:
+                    effective_threshold = fixed_threshold
                 combined_warning = fixed_warning or (
                     reading_value > effective_threshold
                     if sensor in ("uv", "gas")
@@ -147,7 +152,10 @@ def main():
                     "reading": reading,
                     "fixedThreshold": fixed_threshold,
                     "fixedWarning": fixed_warning,
-                    "adaptiveWarning": adaptive_warning,
+                    "adaptiveWarning": (
+                        adaptive_warning if result["baselineEstablished"] else False
+                    ),
+                    "adaptiveReady": result["baselineEstablished"],
                     "effectiveThreshold": round(effective_threshold, 3),
                     "warning": bool(combined_warning),
                     "validatedForRealWorldUse": False,
@@ -159,6 +167,8 @@ def main():
                     f"adaptive={result['adaptiveThreshold']}, "
                     f"effective={effective_threshold}, "
                     f"warning={combined_warning}, "
+                    f"samples={result['initialSamplesCollected']}/"
+                    f"{result['initialSamplesRequired']}, "
                     f"status={result['learningStatus']}"
                 )
 
