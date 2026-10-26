@@ -2,6 +2,7 @@
 
 import { doc, getDoc } from "firebase/firestore";
 import { getSafetyPrecaution } from "@/lib/safety-precautions";
+import PrecautionNotifications from "./precaution-notifications";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -1539,6 +1540,8 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
           </div>
 
         </section>
+
+    <PrecautionNotifications precautions={safetyPrecautions} />
 
     {/* Immediate Safety Precautions */}
     <section style={sectionStyle}>
