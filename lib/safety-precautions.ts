@@ -97,11 +97,11 @@ export function getSafetyPrecaution(
     case "light":
       precaution = {
         sensor,
-        title: "Bright Light Warning",
+        title: "Low Light Warning",
         message:
-          "The light sensor reading has exceeded your configured test threshold. Brightness alone does not establish that light is harmful.",
+          "The light sensor reading is below your configured low-light threshold.",
         action:
-          "Consider reducing exposure or moving away from the source. Never look directly at the Sun, lasers, or other potentially hazardous light sources.",
+          "Move to a better-lit area if safe, increase room lighting where possible, and pause tasks if you cannot see clearly. Do not rely on this sensor alone to judge visibility.",
         severity: "warning",
       };
 
