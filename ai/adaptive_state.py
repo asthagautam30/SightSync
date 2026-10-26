@@ -43,8 +43,14 @@ def restore_engine_state(engine, state):
         if not engine.policy.min_threshold <= float(threshold) <= engine.policy.max_threshold:
             return False
 
+        # Firebase Realtime Database represents empty arrays as null on REST
+        # reads. Normalize those nulls back to empty lists before validation.
         initial = state["initial_samples"]
         batch = state["batch_samples"]
+        if initial is None:
+            initial = []
+        if batch is None:
+            batch = []
         if not isinstance(initial, list) or len(initial) >= 60:
             return False
         if not isinstance(batch, list) or len(batch) >= 20:
