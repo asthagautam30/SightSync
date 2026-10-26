@@ -638,7 +638,7 @@ export default function HistoryPage() {
               </div>
             )}
             <p style={{ margin: "10px 0 0", color: colors.muted, fontSize: "11px", lineHeight: 1.6 }}>
-              Records are saved as 10-second snapshots while this page is open. The AI viewing counter is the Python script's current 60-second-window value, not a daily total.
+              Records are saved as 10-second snapshots while this page is open. The AI viewing counter is the Python script&apos;s current 60-second-window value, not a daily total.
             </p>
           </div>
         </section>
