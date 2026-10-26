@@ -899,12 +899,12 @@ export default function ProfilePage() {
       router.replace("/login");
       return;
     }
-
+    const userId = user.uid;
     let cancelled = false;
 
     async function loadProfile() {
       try {
-        const profileRef = doc(db, "users", user.uid);
+        const profileRef = doc(db, "users", userId);
         const profileSnapshot = await getDoc(profileRef);
 
         if (cancelled) return;

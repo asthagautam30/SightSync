@@ -86,10 +86,10 @@ type SensorPoint = ChartPoint & {
 };
 
 const DEFAULT_VALUES: ThresholdValues = {
-  uv: SENSOR_THRESHOLDS.uv.warningAbove ?? 50,
-  gas: SENSOR_THRESHOLDS.gas.warningAbove ?? 300,
-  light: SENSOR_THRESHOLDS.light.warningAbove ?? 500,
-  distance: SENSOR_THRESHOLDS.distance.warningBelow ?? 50,
+  uv: SENSOR_THRESHOLDS.uv.warningAbove ?? 3000,
+  gas: SENSOR_THRESHOLDS.gas.warningAbove ?? 2000,
+  light: SENSOR_THRESHOLDS.light.warningBelow ?? 800,
+  distance: SENSOR_THRESHOLDS.distance.warningBelow ?? 30,
 };
 
 const RANGE_OPTIONS: {
@@ -100,15 +100,14 @@ const RANGE_OPTIONS: {
   { label: "Last 24 hours", value: "24h" },
   { label: "Last 7 days", value: "7d" },
 ];
-
-// Distance is intentionally excluded from sensor charts.
-// Its graph is replaced with the Visual Comfort dashboard below.
+// UV, gas, light, and distance readings are shown in sensor history charts.
+// Visual Comfort data is displayed separately below.
+// Display all four sensor readings in the history charts.
 const SENSOR_CONFIG: {
-  key: "light",
-  label: "Light Level",
-  unit: " raw test units",
-  redWhen: "below",
-
+  key: SensorKey;
+  label: string;
+  unit: string;
+  redWhen: "above" | "below";
 }[] = [
   {
     key: "uv",
@@ -125,8 +124,14 @@ const SENSOR_CONFIG: {
   {
     key: "light",
     label: "Light Level",
-    unit: " lux",
-    redWhen: "above",
+    unit: " raw test units",
+    redWhen: "below",
+  },
+  {
+    key: "distance",
+    label: "Viewing Distance",
+    unit: " cm",
+    redWhen: "below",
   },
 ];
 
@@ -436,21 +441,22 @@ export default function HistoryPage() {
       "sensorHistory"
     );
 
-    const historyQuery = query(
-      historyRef,
-      where(
-        "timestamp",
-        ">=",
-        Timestamp.fromDate(new Date(windowStart))
-      ),
-      where(
-        "timestamp",
-        "<=",
-        Timestamp.fromDate(new Date(windowEnd))
-      ),
-      orderBy("timestamp", "desc"),
-      limit(5000)
-    );
+   const historyQuery = query(
+  historyRef,
+  where("deviceId", "==", DEVICE_ID),
+  where(
+    "timestamp",
+    ">=",
+    Timestamp.fromDate(new Date(windowStart))
+  ),
+  where(
+    "timestamp",
+    "<=",
+    Timestamp.fromDate(new Date(windowEnd))
+  ),
+  orderBy("timestamp", "desc"),
+  limit(5000)
+);
 
     const unsubscribe = onSnapshot(
       historyQuery,

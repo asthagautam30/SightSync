@@ -7,9 +7,8 @@ Expected model file:
 Expected feature order:
     uv, gas, light, distance
 
-No model is trained by this module. If a trained model is unavailable,
-the module returns an explicit unavailable status rather than inventing
-an anomaly prediction.
+This module does not train a model. If a usable trained model is
+unavailable, it returns an explicit unavailable status.
 """
 
 from pathlib import Path
@@ -40,13 +39,14 @@ class AnomalyDetector:
             return
 
         try:
-            # Only load model files from a trusted source.
             self.model = joblib.load(self.model_path)
 
             if not callable(getattr(self.model, "predict", None)):
-                raise TypeError("Loaded model does not provide predict().")
+                raise TypeError("Model does not provide predict().")
 
-            if not callable(getattr(self.model, "decision_function", None)):
+            if not callable(
+                getattr(self.model, "decision_function", None)
+            ):
                 raise TypeError(
                     "Model does not provide decision_function()."
                 )
@@ -60,7 +60,9 @@ class AnomalyDetector:
             self.error = str(exc)
 
     @staticmethod
-    def _validate_readings(readings: dict) -> Optional[list[float]]:
+    def _validate_readings(
+        readings: dict,
+    ) -> Optional[list[float]]:
         if not isinstance(readings, dict):
             return None
 
@@ -81,12 +83,6 @@ class AnomalyDetector:
         return values
 
     def predict(self, readings: dict) -> dict:
-        """
-        Return a result for one complete sensor snapshot.
-
-        `anomaly` is None when inference cannot be performed.
-        A valid result is not a safety certification.
-        """
         values = self._validate_readings(readings)
 
         if values is None:
@@ -95,7 +91,7 @@ class AnomalyDetector:
                 "anomaly": None,
                 "score": None,
                 "message": (
-                    "Expected finite numeric values for uv, gas, "
+                    "Provide finite numeric values for uv, gas, "
                     "light and distance."
                 ),
                 "validatedForRealWorldUse": False,
@@ -107,8 +103,8 @@ class AnomalyDetector:
                 "anomaly": None,
                 "score": None,
                 "message": (
-                    "No usable trained Isolation Forest model is available. "
-                    "Train and validate a model before enabling predictions."
+                    "No usable trained model is available. "
+                    "Training and validation are required."
                 ),
                 "validatedForRealWorldUse": False,
             }
@@ -116,26 +112,23 @@ class AnomalyDetector:
         try:
             features = np.asarray([values], dtype=float)
 
-            # IsolationForest: -1 = anomaly, 1 = inlier.
             prediction = int(self.model.predict(features)[0])
-            decision_score = float(
+            score = float(
                 self.model.decision_function(features)[0]
             )
 
-            if prediction not in (-1, 1) or not math.isfinite(decision_score):
+            if prediction not in (-1, 1) or not math.isfinite(score):
                 raise ValueError("Model returned an invalid prediction.")
+
+            is_anomaly = prediction == -1
 
             return {
                 "status": "prediction_available",
-                "anomaly": prediction == -1,
-                "score": round(decision_score, 6),
-                "scoreMeaning": (
-                    "Lower decision_function scores indicate more unusual "
-                    "samples relative to this model."
-                ),
+                "anomaly": is_anomaly,
+                "score": round(score, 6),
                 "message": (
                     "Anomaly candidate detected."
-                    if prediction == -1
+                    if is_anomaly
                     else "No anomaly flagged by the model."
                 ),
                 "validatedForRealWorldUse": False,
@@ -151,10 +144,33 @@ class AnomalyDetector:
             }
 
 
-# Convenient module-level detector for later integration.
+# Create one detector for later integration.
 detector = AnomalyDetector()
 
 
 def detect_anomaly(readings: dict) -> dict:
-    """Public entry point for the future Firebase integration."""
+    """Public entry point for future sensor-data integration."""
     return detector.predict(readings)
+
+
+if __name__ == "__main__":
+    print("Smart Spectacles - Anomaly Detection Check")
+    print("-" * 45)
+
+    print(f"Model status: {detector.status}")
+
+    if detector.error:
+        print(f"Model loading error: {detector.error}")
+
+    example_readings = {
+        "uv": 2800,
+        "gas": 1800,
+        "light": 850,
+        "distance": 35,
+    }
+
+    result = detect_anomaly(example_readings)
+
+    print("Example input:", example_readings)
+    print("Result:", result)
+    print("\nCheck complete. No Firebase data was changed.")

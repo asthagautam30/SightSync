@@ -6,7 +6,12 @@ import { getSafetyPrecaution } from "@/lib/safety-precautions";
 import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
-
+import { alertManager } from "@/lib/alert-manager";
+ import {
+  getWeeklyReportWeekKey,
+  isWeeklyReportNoticeDismissed,
+  dismissWeeklyReportNotice,
+} from "@/lib/weekly-report-notice";
 import { useRouter } from "next/navigation";
 
 import { ref, onValue } from "firebase/database";
@@ -17,7 +22,7 @@ import { db, realtimeDb, auth } from "@/lib/firebase";
 
 import { useAuth } from "../auth-provider";
 
-import { saveSensorReading } from "@/lib/sensor-history";
+// import { saveSensorReading } from "@/lib/sensor-history";
 
 import { saveSensorAlert } from "@/lib/alert-history";
 import {
@@ -35,9 +40,23 @@ import {
 
 } from "@/lib/sensor-thresholds";
 
-const HISTORY_INTERVAL_MS = 5000;
+// const HISTORY_INTERVAL_MS = 10000;
 
 type SensorKey = "uv" | "gas" | "light" | "distance";
+
+type AdaptiveSensorResult = {
+  adaptiveThreshold?: number;
+  baseline?: number;
+  learningStatus?: string;
+  reading?: number;
+  warning?: boolean;
+  validatedForRealWorldUse?: boolean;
+};
+
+type AdaptiveFirebaseData = {
+  sensors?: Partial<Record<SensorKey, AdaptiveSensorResult>>;
+  updatedAt?: number;
+};
 
 type SensorData = {
 
@@ -127,30 +146,84 @@ const SENSOR_DETAILS: {
 
     icon: "💡",
 
-    unit: " lux",
+    unit: " raw test units",
 
   },
+{
+    key: "distance",
+    title: "Viewing Distance",
+    message: "Nearby obstacle warning detected",
+    icon: "📏",
+    unit: " cm",
+  },
+
 
 ];
 
 export default function DashboardPage() {
 
   const router = useRouter();
+  const [showWeeklyReportNotice, setShowWeeklyReportNotice] =
+    useState(false);
+  const [weeklyReportWeekKey, setWeeklyReportWeekKey] = useState("");
 
   const { user, loading } = useAuth();
 
   const [data, setData] = useState<SensorData | null>(null);
-const [statusTime, setStatusTime] = useState(0);
-const [sensorActivityTime, setSensorActivityTime] = useState(0);
-const previousSensorSignatureRef = useRef("");
+ const [statusTime, setStatusTime] = useState(0);
+ const [sensorActivityTime, setSensorActivityTime] = useState(0);
+ const previousSensorSignatureRef = useRef("");
+  useEffect(() => {
+  if (loading || !user) {
+    setShowWeeklyReportNotice(false);
+    return;
+  }
 
-useEffect(() => {
+  let cancelled = false;
+
+  async function checkWeeklyReportNotice() {
+    const weekKey = getWeeklyReportWeekKey();
+
+    setWeeklyReportWeekKey(weekKey);
+
+    if (isWeeklyReportNoticeDismissed(user!.uid, weekKey)) {
+      setShowWeeklyReportNotice(false);
+      return;
+    }
+
+    try {
+      const summaries = await getDailySensorSummary(user!.uid);
+
+      if (cancelled) return;
+
+      // Show the notice only when historical sensor data exists.
+      const hasHistoricalData = summaries.some(
+        (summary) => summary.readingCount > 0
+      );
+
+      setShowWeeklyReportNotice(hasHistoricalData);
+    } catch (error) {
+      console.error("Could not check weekly report notice:", error);
+
+      if (!cancelled) {
+        setShowWeeklyReportNotice(false);
+      }
+    }
+  }
+
+  void checkWeeklyReportNotice();
+
+  return () => {
+    cancelled = true;
+  };
+}, [user, loading]);
+ useEffect(() => {
   const intervalId = window.setInterval(() => {
     setStatusTime(Date.now());
   }, 1000);
 
   return () => window.clearInterval(intervalId);
-}, []);
+ }, []);
   const [historicalSummaries, setHistoricalSummaries] =
   useState<DailySensorSummary[]>([]);
   const [safetyProfile, setSafetyProfile] = useState<{
@@ -158,7 +231,7 @@ useEffect(() => {
   outdoorTime?: string;
   environment?: string;
   warningSensitivity?: string;
-} | null>(null);
+ } | null>(null);
 
   const [lastUpdate, setLastUpdate] = useState("Waiting for readings");
 
@@ -172,11 +245,17 @@ useEffect(() => {
 
   useState<ThresholdValues>(getActiveThresholds());
 
-const [thresholdsLoading, setThresholdsLoading] = useState(true);
+  const [adaptiveData, setAdaptiveData] =
+  useState<AdaptiveFirebaseData | null>(null);
 
-  const latestDataRef = useRef<SensorData | null>(null);
+  const [adaptiveLastUpdated, setAdaptiveLastUpdated] =
+  useState<number | null>(null);
 
-  const savingHistoryRef = useRef(false);
+  const [thresholdsLoading, setThresholdsLoading] = useState(true);
+
+  // const latestDataRef = useRef<SensorData | null>(null);
+
+  // const savingHistoryRef = useRef(false);
 
   const previousWarningsRef = useRef<Record<string, boolean>>({});
 
@@ -184,7 +263,7 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
 
   Record<string, boolean>
 
->({});
+ >({});
 
   const alertQueueRef = useRef<Promise<void>>(Promise.resolve());
    useEffect(() => {
@@ -221,7 +300,11 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
     cancelled = true;
     window.clearInterval(intervalId);
   };
-}, [user, loading]);
+ }, [user, loading]);
+
+
+
+
   useEffect(() => {
   if (loading) return;
 
@@ -230,11 +313,12 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
     return;
   }
 
+  const userId = user.uid;
   let cancelled = false;
 
   async function loadSafetyProfile() {
     try {
-      const userRef = doc(db, "users", user.uid);
+      const userRef = doc(db, "users", userId);
       const userSnapshot = await getDoc(userRef);
 
       if (cancelled) return;
@@ -259,7 +343,11 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
   return () => {
     cancelled = true;
   };
-}, [user, loading]);
+ }, [user, loading]);
+
+
+
+
   useEffect(() => {
 
   if (loading) return;
@@ -280,9 +368,9 @@ const [thresholdsLoading, setThresholdsLoading] = useState(true);
 
       const currentUser = user;
 
-if (!currentUser) return;
+ if (!currentUser) return;
 
-const userRef = doc(db, "users", currentUser.uid);
+ const userRef = doc(db, "users", currentUser.uid);
 
       const userSnapshot = await getDoc(userRef);
 
@@ -336,9 +424,9 @@ const userRef = doc(db, "users", currentUser.uid);
 
   };
 
-}, [user, loading]);
+ }, [user, loading]);
 
-// Protect the dashboard.
+ // Protect the dashboard.
 
   useEffect(() => {
 
@@ -350,17 +438,37 @@ const userRef = doc(db, "users", currentUser.uid);
 
   }, [user, loading, router]);
 
-// Subscribe to live Firebase sensor readings.
+  // Subscribe to live Firebase sensor readings.
+
+useEffect(() => {
+  const adaptiveRef = ref(
+    realtimeDb,
+    "devices/Prachi-spectacles-001/adaptive"
+  );
+
+  const unsubscribe = onValue(adaptiveRef, (snapshot) => {
+    if (snapshot.exists()) {
+      setAdaptiveData(snapshot.val() as AdaptiveFirebaseData);
+      setAdaptiveLastUpdated(Date.now());
+    } else {
+  setAdaptiveData(null);
+  setAdaptiveLastUpdated(null);
+}
+  });
+
+  return () => unsubscribe();
+}, []);
+
 
   useEffect(() => {
 
     if (loading || !user) return;
 
    
-const sensorRef = ref(
+ const sensorRef = ref(
   realtimeDb,
   "devices/Prachi-spectacles-001/current"
-);
+ );
 
 
     const unsubscribe = onValue(
@@ -371,7 +479,7 @@ const sensorRef = ref(
 
         const sensorData = snapshot.val() as SensorData | null;
 
-        latestDataRef.current = sensorData;
+        // latestDataRef.current = sensorData;
 
         setData(sensorData);
 
@@ -416,65 +524,65 @@ const sensorRef = ref(
 
 // Save a history record every five seconds while recording is enabled.
 
-  useEffect(() => {
+//   useEffect(() => {
 
-    if (loading || !user || !recording) return;
+//     if (loading || !user || !recording) return;
 
-    const intervalId = setInterval(async () => {
+//     const intervalId = setInterval(async () => {
 
-      const reading = latestDataRef.current;
+//       const reading = latestDataRef.current;
 
-      if (!reading || savingHistoryRef.current) return;
+//       if (!reading || savingHistoryRef.current) return;
 
-      savingHistoryRef.current = true;
+//       savingHistoryRef.current = true;
 
-      try {
+//       try {
 
-// Keep the existing Firebase warning flags as the source
+// // Keep the existing Firebase warning flags as the source
 
-// of the saved history risk status.
+// // of the saved history risk status.
 
-        const risk =
-          reading.ai?.warning === true ||
-          SENSOR_DETAILS.some(
-            ({ key }) => reading.warnings?.[key] === true
-          )
-            ? "warning"
-            : "normal";
+//         const risk =
+//           reading.ai?.warning === true ||
+//           SENSOR_DETAILS.some(
+//             ({ key }) => reading.warnings?.[key] === true
+//           )
+//             ? "warning"
+//             : "normal";
 
-        await saveSensorReading(user.uid, {
+//         await saveSensorReading(user.uid, {
 
-          deviceId: "simulated-device-001",
+//           deviceId: "Prachi-spectacles-001",
 
-          uv: reading.uv ?? null,
+//           uv: reading.uv ?? null,
 
-          gas: reading.gas ?? null,
+//           gas: reading.gas ?? null,
 
-          light: reading.light ?? null,
+//           light: reading.light ?? null,
 
-          distance: reading.distance ?? null,
+//           distance: reading.distance ?? null,
 
-          blink: null,
+//           blink: null,
 
-          risk,
+//           risk,
 
-        });
+//         });
 
-      } catch (error) {
+//       } catch (error) {
 
-        console.error("Sensor history save failed:", error);
+//         console.error("Sensor history save failed:", error);
 
-      } finally {
+//       } finally {
 
-        savingHistoryRef.current = false;
+//         savingHistoryRef.current = false;
 
-      }
+//       }
 
-    }, HISTORY_INTERVAL_MS);
+//     }, HISTORY_INTERVAL_MS);
 
-    return () => clearInterval(intervalId);
+//     return () => clearInterval(intervalId);
 
-  }, [user, loading, recording]);
+//   }, [user, loading, recording]);
 
 // Save an alert when a Firebase warning changes from normal to warning.
 
@@ -714,8 +822,13 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
   const threshold = activeThresholds[sensor.key];
 
-  const exceeded =
+  const thresholdExceeded =
     checkThreshold(sensor.key, value, activeThresholds) === true;
+
+  const firebaseWarning =
+    data?.warnings?.[sensor.key] === true;
+
+  const exceeded = thresholdExceeded || firebaseWarning;
   const history = historicalSummaries.find(
   (summary) => summary.sensor === sensor.key
 );
@@ -759,9 +872,82 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
         ? "Connected"
         : "Disconnected";
   return (
-
     <main style={pageStyle}>
 
+      {/* Weekly AI Report popup — INSERT HERE */}
+      {showWeeklyReportNotice && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="weekly-report-notice-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "rgba(0, 0, 0, 0.7)",
+          }}
+        >
+          <section
+            style={{
+              width: "100%",
+              maxWidth: 440,
+              padding: 24,
+              borderRadius: 16,
+              border: "1px solid #164e63",
+              background: "#0b1729",
+              color: "#f1f5f9",
+            }}
+          >
+            <h2 id="weekly-report-notice-title">
+              📊 Weekly AI Report
+            </h2>
+
+            <p style={mutedTextStyle}>
+              Review your recent sensor readings, weekly patterns,
+              and suggested precautions.
+            </p>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link
+                href="/weekly-report"
+                style={primaryButtonStyle}
+                onClick={() => {
+                  if (user && weeklyReportWeekKey) {
+                    dismissWeeklyReportNotice(
+                      user.uid,
+                      weeklyReportWeekKey
+                    );
+                  }
+                  setShowWeeklyReportNotice(false);
+                }}
+              >
+                View report →
+              </Link>
+
+              <button
+                type="button"
+                style={secondaryButtonStyle}
+                onClick={() => {
+                  if (user && weeklyReportWeekKey) {
+                    dismissWeeklyReportNotice(
+                      user.uid,
+                      weeklyReportWeekKey
+                    );
+                  }
+                  setShowWeeklyReportNotice(false);
+                }}
+              >
+                Maybe later
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Your existing dashboard content stays here */}
       <div style={containerStyle}>
 
         {/* Header */}
@@ -850,6 +1036,110 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 \
 
         </nav>
+
+        {/* INSERT ADAPTIVE PANEL HERE */}
+        {/* Experimental Adaptive Thresholds */}
+        <section
+          style={{
+            marginTop: 24,
+            padding: 20,
+            borderRadius: 16,
+            border: "1px solid #164e63",
+            background: "#0b1729",
+            color: "#f1f5f9",
+          }}
+        >
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>
+            🧠 Adaptive Threshold Learning
+          </h2>
+
+          <p style={{ ...mutedTextStyle, marginBottom: 16 }}>
+            Experimental thresholds learned from simulated sensor readings.
+            These do not replace your configured safety thresholds.
+          </p>
+
+          <p style={{ ...mutedTextStyle, fontSize: 12, marginBottom: 16 }}>
+  Last updated:{" "}
+  {adaptiveLastUpdated
+    ? new Date(adaptiveLastUpdated).toLocaleTimeString()
+    : "Waiting for first update"}
+</p>
+
+          {!adaptiveData?.sensors ? (
+            <p style={mutedTextStyle}>
+              Waiting for adaptive data from Firebase. Make sure your Python
+              adaptive script is running.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {(
+                [
+                  ["uv", "UV Level"],
+                  ["gas", "Gas / Smoke"],
+                  ["light", "Light Level"],
+                  ["distance", "Distance"],
+                ] as const
+              ).map(([key, label]) => {
+                const sensor = adaptiveData.sensors?.[key];
+
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      background: "#132238",
+                      border: "1px solid #26384f",
+                    }}
+                  >
+                    <strong>{label}</strong>
+
+                    <p style={{ margin: "8px 0 4px" }}>
+                      Current reading: {data?.[key] ?? sensor?.reading ?? "—"}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Adaptive threshold: {sensor?.adaptiveThreshold ?? "—"}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Baseline: {sensor?.baseline ?? "—"}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Learning status: {
+  sensor?.learningStatus === "collecting_baseline"
+    ? "📊 Collecting baseline"
+    : sensor?.learningStatus === "paused_hazard"
+      ? "⚠️ Paused — Potential Hazard"
+      : sensor?.learningStatus === "learning"
+        ? "🧠 Learning"
+        : sensor?.learningStatus === "baseline_ready"
+          ? "✅ Baseline Ready"
+          : sensor?.learningStatus ?? "Waiting for data"
+}
+                    </p>
+
+                    <p style={{ margin: "4px 0" }}>
+                      Experimental warning:{" "}
+                      {sensor?.warning === true
+                        ? "Yes"
+                        : sensor?.warning === false
+                          ? "No"
+                          : "Unknown"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p style={{ marginTop: 16, fontSize: 12, color: "#fbbf24" }}>
+            ⚠️ Experimental only. These thresholds have not been validated for
+            real-world safety use. Continue using your existing safety settings.
+          </p>
+        </section>
+        {/* END ADAPTIVE PANEL */}
 
         {/* Hero */}
 
@@ -2175,3 +2465,5 @@ const errorStyle = {
   fontSize: 13,
 
 };
+
+

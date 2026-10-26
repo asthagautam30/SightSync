@@ -192,3 +192,34 @@ def create_engines():
         sensor: AdaptiveThreshold(policy)
         for sensor, policy in DEFAULT_POLICIES.items()
     }
+
+if __name__ == "__main__":
+    engines = create_engines()
+
+    print("Smart Spectacles - Adaptive Threshold Demo")
+    print("-" * 45)
+
+    # Example readings for demonstration only.
+    demo_readings = {
+        "uv": [2800] * 12,
+        "gas": [1800] * 12,
+        "light": [850] * 12,
+        "distance": [35] * 12,
+    }
+
+    for sensor, readings in demo_readings.items():
+        engine = engines[sensor]
+
+        print(f"\nSensor: {sensor}")
+
+        for index, reading in enumerate(readings, start=1):
+            result = engine.observe(reading)
+
+            if index in (1, 9, 10, 12):
+                print(
+                    f"Reading {index}: {reading} | "
+                    f"Threshold: {result['adaptiveThreshold']} | "
+                    f"Status: {result['learningStatus']}"
+                )
+
+    print("\nDemo complete. No Firebase values were changed.")
