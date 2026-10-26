@@ -1,0 +1,38 @@
+name: Smart Spectacles CI
+
+on:
+  push:
+    branches: [main, prachi]
+  pull_request:
+    branches: [main, prachi]
+  workflow_dispatch:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install web dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build Next.js application
+        run: npm run build
+
+  adaptive-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test adaptive learning and persistence
+        run: python -m unittest ai.test_adaptive_thresholds -v
