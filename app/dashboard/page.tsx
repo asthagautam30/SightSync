@@ -715,6 +715,47 @@ useEffect(() => {
     previousWarningsRef.current.visualComfort = isWarning;
   }, [data?.ai?.warning, data?.ai?.viewingTime, user, loading]);
 
+  // Adaptive results can add earlier warnings, but never relax the
+  // user's fixed threshold settings. Ignore missing or stale adaptive data.
+  const adaptiveIsFresh =
+    adaptiveData !== null &&
+    adaptiveLastUpdated !== null &&
+    statusTime > 0 &&
+    statusTime - adaptiveLastUpdated >= -3000 &&
+    statusTime - adaptiveLastUpdated <= 20000;
+
+  const getCombinedThresholdWarning = (
+    sensor: SensorKey,
+    value: number | null
+  ): boolean | null => {
+    const fixedWarning = checkThreshold(sensor, value, activeThresholds);
+    if (fixedWarning === null) return null;
+    if (!adaptiveIsFresh) return fixedWarning;
+
+    const adaptiveSensor = adaptiveData?.sensors?.[sensor];
+    // Adaptive thresholds do not influence warnings until the initial
+    // baseline has been established from enough valid readings.
+    if (adaptiveSensor?.baselineEstablished !== true) return fixedWarning;
+    const adaptiveThreshold = adaptiveSensor.adaptiveThreshold;
+    if (typeof adaptiveThreshold !== "number" || !Number.isFinite(adaptiveThreshold)) {
+      return fixedWarning;
+    }
+
+    const fixedThreshold = activeThresholds[sensor];
+    const effectiveThreshold =
+      sensor === "uv" || sensor === "gas"
+        ? Math.min(fixedThreshold, adaptiveThreshold)
+        : Math.max(fixedThreshold, adaptiveThreshold);
+
+    const adaptiveWarning =
+      sensor === "uv" || sensor === "gas"
+        ? value! > effectiveThreshold
+        : value! < effectiveThreshold;
+
+    // The fixed warning is always included; adaptation can only add sensitivity.
+    return fixedWarning || adaptiveWarning;
+  };
+
   // Save an alert when a reading crosses its active custom threshold.
 useEffect(() => {
   if (loading || !user || !data || thresholdsLoading) return;
@@ -790,46 +831,6 @@ useEffect(() => {
   adaptiveLastUpdated,
   statusTime,
 ]);
-  // Adaptive results can add earlier warnings, but never relax the
-  // user's fixed threshold settings. Ignore missing or stale adaptive data.
-  const adaptiveIsFresh =
-    adaptiveData !== null &&
-    adaptiveLastUpdated !== null &&
-    statusTime > 0 &&
-    statusTime - adaptiveLastUpdated >= -3000 &&
-    statusTime - adaptiveLastUpdated <= 20000;
-
-  const getCombinedThresholdWarning = (
-    sensor: SensorKey,
-    value: number | null
-  ): boolean | null => {
-    const fixedWarning = checkThreshold(sensor, value, activeThresholds);
-    if (fixedWarning === null) return null;
-    if (!adaptiveIsFresh) return fixedWarning;
-
-    const adaptiveSensor = adaptiveData?.sensors?.[sensor];
-    // Adaptive thresholds do not influence warnings until the initial
-    // baseline has been established from enough valid readings.
-    if (adaptiveSensor?.baselineEstablished !== true) return fixedWarning;
-    const adaptiveThreshold = adaptiveSensor.adaptiveThreshold;
-    if (typeof adaptiveThreshold !== "number" || !Number.isFinite(adaptiveThreshold)) {
-      return fixedWarning;
-    }
-
-    const fixedThreshold = activeThresholds[sensor];
-    const effectiveThreshold =
-      sensor === "uv" || sensor === "gas"
-        ? Math.min(fixedThreshold, adaptiveThreshold)
-        : Math.max(fixedThreshold, adaptiveThreshold);
-
-    const adaptiveWarning =
-      sensor === "uv" || sensor === "gas"
-        ? value! > effectiveThreshold
-        : value! < effectiveThreshold;
-
-    // The fixed warning is always included; adaptation can only add sensitivity.
-    return fixedWarning || adaptiveWarning;
-  };
 
   const handleLogout = async () => {
 
