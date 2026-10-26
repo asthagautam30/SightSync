@@ -13,7 +13,7 @@ export default function LightAlertGuidePage() {
         </p>
         <h2 style={styles.heading}>Choosing a value</h2>
         <ul style={styles.list}>
-          <li>Start with the project's default value if you are unsure.</li>
+          <li>Start with the project&apos;s default value if you are unsure.</li>
           <li>Check readings under the lighting conditions you want to demonstrate.</li>
           <li>Set a custom warning limit based on those readings and your configured alert logic.</li>
         </ul>
