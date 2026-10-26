@@ -1017,14 +1017,16 @@ export default function HistoryPage() {
                             type="monotone"
                             dataKey="value"
                             stroke="none"
-                            dot={(props: { payload?: { id?: string } }) => {
+                            dot={(props: { payload?: { id?: string }; cx?: number; cy?: number }) => {
+                              if (!props.payload) return null;
+
                               const isMax =
                                 maxPoint !== null &&
-                                props.payload.id === maxPoint.id;
+                                props.payload?.id === maxPoint.id;
 
                               const isMin =
                                 minPoint !== null &&
-                                props.payload.id === minPoint.id;
+                                props.payload?.id === minPoint.id;
 
                               if (!isMax && !isMin) return null;
 
@@ -1038,9 +1040,9 @@ export default function HistoryPage() {
 
                               return (
                                 <circle
-                                  key={`${type}-${props.payload.id}`}
-                                  cx={props.cx}
-                                  cy={props.cy}
+                                  key={`${type}-${props.payload?.id ?? "unknown"}`}
+                                  cx={props.cx ?? 0}
+                                  cy={props.cy ?? 0}
                                   r={6}
                                   fill={
                                     isMax ? colors.pink : colors.green
