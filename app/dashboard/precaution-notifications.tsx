@@ -18,6 +18,11 @@ export default function PrecautionNotifications({
   const [toast, setToast] = useState<Toast | null>(null);
   const activeRef = useRef<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const precautionSignature = JSON.stringify(
+    precautions.map(({ sensor, title, message, action, severity, personalNote }) => ({
+      sensor, title, message, action, severity, personalNote,
+    }))
+  );
 
   useEffect(() => {
     const current = new Map(precautions.map((item) => [item.sensor, item]));
@@ -55,7 +60,7 @@ export default function PrecautionNotifications({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [precautions]);
+  // Depend on content rather than a freshly allocated array from the dashboard.\n  // This prevents unrelated renders from restarting the toast timer.\n  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [precautionSignature]);
 
   if (!toast) return null;
 
