@@ -28,7 +28,15 @@ def export_engine_state(engine):
 
 def restore_engine_state(engine, state):
     """Restore only a complete, type-checked state for the existing policy."""
-    if not isinstance(state, dict) or any(field not in state for field in STATE_FIELDS):
+    if not isinstance(state, dict):
+        return False
+    # Firebase REST can omit null-valued fields and empty arrays entirely.
+    # These three fields have safe defaults for a not-yet-validated learner.
+    state = dict(state)
+    state.setdefault("baseline", None)
+    state.setdefault("initial_samples", [])
+    state.setdefault("batch_samples", [])
+    if any(field not in state for field in STATE_FIELDS):
         return False
     try:
         baseline = state["baseline"]
