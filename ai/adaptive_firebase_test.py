@@ -29,6 +29,29 @@ FIREBASE_ADAPTIVE_URL = (
 POLL_SECONDS = 5
 SENSOR_KEYS = ("uv", "gas", "light", "distance")
 
+# These match the website's current project/test defaults. They are not
+# calibrated real-world safety limits. Never allow adaptation to relax them.
+FIXED_THRESHOLDS = {
+    "uv": 3000,
+    "gas": 2000,
+    "light": 800,
+    "distance": 30,
+}
+
+
+def is_fixed_warning(sensor, reading):
+    threshold = FIXED_THRESHOLDS[sensor]
+    if sensor in ("uv", "gas"):
+        return reading > threshold
+    return reading < threshold
+
+
+def conservative_threshold(sensor, fixed_threshold, adaptive_threshold):
+    """Choose the stricter threshold so adaptation can only add sensitivity."""
+    if sensor in ("uv", "gas"):
+        return min(fixed_threshold, adaptive_threshold)
+    return max(fixed_threshold, adaptive_threshold)
+
 
 def read_firebase():
     """Read the latest sensor record without changing it."""
@@ -95,24 +118,47 @@ def main():
 
                 engine = engines[sensor]
 
-                # Check whether this reading triggers a warning.
-                warning = engine.is_warning(float(reading))
+                # Fixed warnings remain authoritative. Adaptive thresholds
+                # may add earlier warnings, but must never relax fixed ones.
+                reading_value = float(reading)
+                fixed_threshold = FIXED_THRESHOLDS[sensor]
+                fixed_warning = is_fixed_warning(sensor, reading_value)
+                adaptive_warning = engine.is_warning(reading_value)
 
-                # Do not learn from readings that trigger a warning.
+                # Pause learning on either kind of warning, so hazardous
+                # readings are never learned as the user's normal baseline.
                 result = engine.observe(
-                    float(reading),
-                    hazardous=warning,
+                    reading_value,
+                    hazardous=(fixed_warning or adaptive_warning),
+                )
+                effective_threshold = conservative_threshold(
+                    sensor,
+                    fixed_threshold,
+                    result["adaptiveThreshold"],
+                )
+                combined_warning = fixed_warning or (
+                    reading_value > effective_threshold
+                    if sensor in ("uv", "gas")
+                    else reading_value < effective_threshold
                 )
 
                 latest_results[sensor] = {
                     **result,
                     "reading": reading,
+                    "fixedThreshold": fixed_threshold,
+                    "fixedWarning": fixed_warning,
+                    "adaptiveWarning": adaptive_warning,
+                    "effectiveThreshold": round(effective_threshold, 3),
+                    "warning": bool(combined_warning),
+                    "validatedForRealWorldUse": False,
                 }
 
                 print(
-                    f"  {sensor}: reading={reading}, "
-                    f"threshold={result['adaptiveThreshold']}, "
-                    f"warning={result['warning']}, "
+                    f"  {sensor}: reading={reading_value}, "
+                    f"fixed={fixed_threshold}, "
+                    f"adaptive={result['adaptiveThreshold']}, "
+                    f"effective={effective_threshold}, "
+                    f"warning={combined_warning}, "
                     f"status={result['learningStatus']}"
                 )
 
