@@ -60,7 +60,10 @@ export default function PrecautionNotifications({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  // Depend on content rather than a freshly allocated array from the dashboard.\n  // This prevents unrelated renders from restarting the toast timer.\n  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [precautionSignature]);
+  // Depend on content rather than a freshly allocated array from the dashboard.
+  // This prevents unrelated renders from restarting the toast timer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precautionSignature]);
 
   if (!toast) return null;
 
