@@ -12,9 +12,9 @@ export default function UVAlertGuidePage() {
         </p>
         <h2 style={styles.heading}>Choosing a value</h2>
         <ul style={styles.list}>
-          <li>Start with the project's default value if you are unsure.</li>
+          <li>Start with the project&apos;s default value if you are unsure.</li>
           <li>Observe the readings produced by your setup before choosing a custom value.</li>
-          <li>Use a value that matches your project's demonstration and configured warning logic.</li>
+          <li>Use a value that matches your project&apos;s demonstration and configured warning logic.</li>
         </ul>
         <p style={styles.note}>
           These readings and example ranges are for project demonstration only,
