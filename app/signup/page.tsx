@@ -53,7 +53,7 @@ const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     );
 
     await sendEmailVerification(userCredential.user, {
-  url: "http://localhost:3000/login",
+  url: typeof window !== "undefined" ? `${window.location.origin}/login` : "/login",
   handleCodeInApp: false,
 });
 
