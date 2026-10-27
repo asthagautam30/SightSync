@@ -1075,6 +1075,10 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           </Link>
 
+          <Link href="/adaptive-learning" style={navLinkStyle}>
+            Adaptive Learning
+          </Link>
+
           <Link href="/history" style={navLinkStyle}>
 
             Sensor History
@@ -1100,146 +1104,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
         </nav>
 
-        {/* INSERT ADAPTIVE PANEL HERE */}
-        {/* Experimental Adaptive Thresholds */}
-        <section
-          style={{
-            marginTop: 24,
-            padding: 20,
-            borderRadius: 16,
-            border: "1px solid #164e63",
-            background: "#0b1729",
-            color: "#f1f5f9",
-          }}
-        >
-          <h2 style={{ fontSize: 20, marginBottom: 8 }}>
-            🧠 Adaptive Threshold Learning
-          </h2>
-
-          <p style={{ ...mutedTextStyle, marginBottom: 16 }}>
-            Experimental thresholds learned from simulated sensor readings.
-            These do not replace your configured safety thresholds.
-          </p>
-
-          <p style={{ ...mutedTextStyle, fontSize: 12, marginBottom: 16 }}>
-  Last updated:{" "}
-  {adaptiveLastUpdated
-    ? new Date(adaptiveLastUpdated).toLocaleTimeString()
-    : "Waiting for first update"}
-  {" · "}
-  {adaptiveIsFresh ? "Live adaptive results" : "Stale/unavailable — fixed thresholds only"}
-</p>
-
-          {!adaptiveData?.sensors ? (
-            <p style={mutedTextStyle}>
-              Waiting for adaptive data from Firebase. Make sure your Python
-              adaptive script is running.
-            </p>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {(
-                [
-                  ["uv", "UV Level"],
-                  ["gas", "Gas / Smoke"],
-                  ["light", "Light Level"],
-                  ["distance", "Distance"],
-                ] as const
-              ).map(([key, label]) => {
-                const sensor = adaptiveData.sensors?.[key];
-
-                return (
-                  <div
-                    key={key}
-                    style={{
-                      padding: 14,
-                      borderRadius: 10,
-                      background: "#132238",
-                      border: "1px solid #26384f",
-                    }}
-                  >
-                    <strong>{label}</strong>
-
-                    <p style={{ margin: "8px 0 4px" }}>
-                      Current reading: {data?.[key] ?? sensor?.reading ?? "—"}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Fixed safety threshold: {activeThresholds[key]}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Adaptive threshold: {sensor?.adaptiveThreshold ?? "—"}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Effective threshold:{" "}
-                      {adaptiveIsFresh && sensor?.baselineEstablished === true
-                        ? (key === "uv" || key === "gas"
-                            ? Math.min(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key])
-                            : Math.max(activeThresholds[key], sensor?.adaptiveThreshold ?? activeThresholds[key]))
-                        : activeThresholds[key]}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Baseline: {sensor?.baseline ?? "—"}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Baseline progress: {sensor?.initialSamplesCollected ?? 0}/
-                      {sensor?.initialSamplesRequired ?? 60} readings
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Batch progress: {sensor?.batchSamplesCollected ?? 0}/
-                      {sensor?.batchSamplesRequired ?? 20} readings
-                      {" · "}Confirmed shift batches: {sensor?.consecutiveShiftBatches ?? 0}/
-                      {sensor?.shiftBatchesRequired ?? 3}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Learning status: {
-  sensor?.learningStatus === "collecting_baseline"
-    ? "📊 Collecting initial baseline"
-    : sensor?.learningStatus === "baseline_established"
-      ? "✅ Initial baseline established"
-      : sensor?.learningStatus === "checking_new_normal"
-        ? "🔎 Checking whether change persists"
-        : sensor?.learningStatus === "monitoring_stability"
-          ? "👀 Monitoring stability"
-          : sensor?.learningStatus === "adapting_gradually"
-            ? "🧠 Adapting gradually"
-            : sensor?.learningStatus === "paused_hazard"
-              ? "⚠️ Paused — Potential Hazard"
-              : sensor?.learningStatus === "paused_unstable"
-                ? "⏸️ Paused — Unstable readings"
-                : sensor?.learningStatus === "paused_anomaly"
-                  ? "⏸️ Paused — Unusual reading"
-                  : sensor?.learningStatus ?? "Waiting for data"
-}
-                    </p>
-
-                    <p style={{ margin: "4px 0" }}>
-                      Experimental warning:{" "}
-                      {sensor?.baselineEstablished !== true
-                        ? "Not active — baseline not validated"
-                        : sensor?.warning === true
-                          ? "Yes"
-                          : sensor?.warning === false
-                            ? "No"
-                            : "Unknown"}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <p style={{ marginTop: 16, fontSize: 12, color: "#fbbf24" }}>
-            ⚠️ Experimental only. These thresholds have not been validated for
-            real-world safety use. Continue using your existing safety settings.
-          </p>
-        </section>
-        {/* END ADAPTIVE PANEL */}
+        
 
         {/* Hero */}
 
