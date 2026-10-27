@@ -101,7 +101,7 @@ export default function Home() {
       <nav style={styles.nav}>
         <Link href="/" style={styles.brand}>
           <span style={styles.brandIcon}>👓</span>
-          <span>Smart Spectacles</span>
+          <span>SightSync</span>
         </Link>
 
         <div style={styles.navLinks}>
@@ -136,7 +136,7 @@ export default function Home() {
           </h1>
 
           <p style={styles.heroDescription}>
-            Smart Spectacles brings environmental sensor monitoring,
+            SightSync brings environmental sensor monitoring,
             historical insights, and safety alerts together in one
             easy-to-use platform.
           </p>
@@ -316,7 +316,7 @@ export default function Home() {
             YOUR ENVIRONMENT, AT A GLANCE
           </span>
           <h2 style={styles.ctaTitle}>
-            Ready to explore Smart Spectacles?
+            Ready to explore SightSync?
           </h2>
           <p style={styles.ctaDescription}>
             Create your profile and access your personalized monitoring
@@ -335,7 +335,7 @@ export default function Home() {
 
       <footer style={styles.footer}>
         <Link href="/" style={styles.footerBrand}>
-          👓 Smart Spectacles
+          👓 SightSync
         </Link>
         <p style={styles.footerText}>
           Environmental awareness through connected sensing.
@@ -351,7 +351,7 @@ export default function Home() {
         </div>
 
         <p style={styles.copyright}>
-          © 2026 Smart Spectacles. Built for environmental awareness.
+          © 2026 SightSync. Built for environmental awareness.
         </p>
       </footer>
     </main>

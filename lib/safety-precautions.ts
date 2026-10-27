@@ -1,4 +1,4 @@
-import type { SensorKey } from "@/lib/daily-sensor-summary";
+ import type { SensorKey } from "@/lib/daily-sensor-summary";
 
 export type SafetySeverity = "info" | "warning" | "urgent";
 
@@ -20,18 +20,27 @@ export type SafetyPrecaution = {
   personalNote?: string;
 };
 
+type HistoricalContext = {
+  anomalyDetected: boolean;
+  baselineAvailable: boolean;
+  baselineAverage: number | null;
+  readingCount: number;
+  unusualCount: number;
+};
+
 type PrecautionInput = {
   sensor: SensorKey;
   value: number | null;
   threshold: number;
   exceeded: boolean;
   profile?: SafetyProfile | null;
+  history?: HistoricalContext | null;
 };
 
 export function getSafetyPrecaution(
   input: PrecautionInput
 ): SafetyPrecaution | null {
-  const { sensor, value, threshold, exceeded, profile } = input;
+  const { sensor, value, threshold, exceeded, profile, history } = input;
 
   if (
     value === null ||
@@ -56,14 +65,10 @@ export function getSafetyPrecaution(
         severity: "warning",
       };
 
-      if (
-        profile?.outdoorTime?.toLowerCase().includes("4 hours") ||
-        profile?.outdoorTime?.toLowerCase().includes("more than")
-      ) {
-        precaution.personalNote =
-          "Since your profile indicates substantial outdoor time, consider planning shade breaks during outdoor activities.";
-      }
-
+      precaution.personalNote =
+        profile?.outdoorTime
+          ? `Since you noted outdoor time in your profile (${profile.outdoorTime}), plan shade breaks and use a hat, covering clothing, and sunscreen as appropriate. The device reading is not a calibrated UV index.`
+          : "Helpful next step: if you are outdoors, move into shade when practical, wear a brimmed hat and covering clothing, and use broad-spectrum sunscreen. This device reading is not a calibrated UV index.";
       break;
 
     case "gas":
@@ -77,36 +82,27 @@ export function getSafetyPrecaution(
         severity: "urgent",
       };
 
-      if (
-        profile?.environment?.toLowerCase().includes("indoor") ||
-        profile?.environment?.toLowerCase().includes("mixed")
-      ) {
-        precaution.personalNote =
-          "Because your profile includes indoor activity, pay attention to possible indoor sources. Do not investigate a suspected gas leak yourself.";
-      }
-
+      precaution.personalNote =
+        profile?.environment
+          ? `Your profile lists your environment as ${profile.environment}. If you suspect poor air quality, move away from the source and get fresh air if safe; never investigate a suspected gas leak yourself.`
+          : "Helpful next step: move away from any suspected source and get fresh air if safe. Do not approach or investigate a suspected gas leak; leave the area and contact local emergency services if a dangerous release is possible.";
       break;
 
     case "light":
       precaution = {
         sensor,
-        title: "Bright Light Warning",
+        title: "Low Light Warning",
         message:
-          "The light sensor reading has exceeded your configured test threshold. Brightness alone does not establish that light is harmful.",
+          "The light sensor reading is below your configured low-light threshold.",
         action:
-          "Consider reducing exposure or moving away from the source. Never look directly at the Sun, lasers, or other potentially hazardous light sources.",
+          "Move to a better-lit area if safe, increase room lighting where possible, and pause tasks if you cannot see clearly. Do not rely on this sensor alone to judge visibility.",
         severity: "warning",
       };
 
-      if (
-        profile?.screenTime?.toLowerCase().includes("6") ||
-        profile?.screenTime?.toLowerCase().includes("8") ||
-        profile?.screenTime?.toLowerCase().includes("more")
-      ) {
-        precaution.personalNote =
-          "Your profile indicates substantial screen time. Consider regular breaks and comfortable screen brightness; this sensor cannot determine whether screen light is harmful.";
-      }
-
+      precaution.personalNote =
+        profile?.screenTime
+          ? `Since your profile notes ${profile.screenTime} of screen time, take regular comfort breaks and adjust lighting so you can see clearly. This sensor cannot determine whether light is harmful.`
+          : "Helpful next step: move to a well-lit area if safe, reduce glare, and take a short comfort break if your eyes feel strained. This sensor cannot determine whether light is harmful.";
       break;
 
     case "distance":
@@ -118,22 +114,39 @@ export function getSafetyPrecaution(
         action:
           "Slow down or stop if safe, check the path ahead, and avoid relying on the sensor alone to navigate.",
         severity: "warning",
+        personalNote:
+          "Helpful next step: pause, look around carefully, and ask for assistance if visibility is poor. The distance sensor is experimental and cannot replace normal care or mobility aids.",
       };
-
       break;
 
     default:
       return null;
   }
 
-  // Personalisation changes advice, never the configured safety threshold.
-  // High sensitivity can add context, but does not establish a real hazard.
+  // Add historical context only when a baseline is available.
+  // Historical patterns never change the threshold or hazard severity.
+  if (
+    history?.baselineAvailable &&
+    history.anomalyDetected
+  ) {
+    const historyNote =
+      history.baselineAverage !== null
+        ? `Today's sensor pattern differs from the historical baseline (average: ${history.baselineAverage}). Review the readings and their context; this pattern alone does not confirm a hazard.`
+        : "Today's sensor pattern differs from the available historical baseline. Review the readings and their context; this pattern alone does not confirm a hazard.";
+
+    precaution.personalNote = precaution.personalNote
+      ? `${precaution.personalNote} ${historyNote}`
+      : historyNote;
+  }
+
+  // These tips are generated from simple rules and profile/history context, not an LLM.
+  // They never change configured safety thresholds or independently establish a hazard.
   if (
     profile?.warningSensitivity?.toLowerCase().includes("high") &&
-    !precaution.personalNote
+    precaution.personalNote
   ) {
-    precaution.personalNote =
-      "Your preference is for more sensitive warnings. This is a test-threshold alert, not confirmation of a real-world hazard.";
+    precaution.personalNote +=
+      " Your settings prefer more sensitive warnings; this test-threshold alert does not by itself confirm a real-world hazard.";
   }
 
   return precaution;

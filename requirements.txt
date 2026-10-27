@@ -1,0 +1,6 @@
+opencv-python
+ultralytics
+requests
+scikit-learn
+joblib
+numpy

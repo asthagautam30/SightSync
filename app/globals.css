@@ -24,3 +24,124 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+
+/* Shared SightSync theme tokens. The Profile selector sets data-theme on <html>. */
+:root,
+:root[data-theme="green-light"] {
+  color-scheme: light;
+  --background: #f3f7f0;
+  --foreground: #233128;
+  --surface: #ffffff;
+  --surface-muted: #e8f0e4;
+  --border: #d2dfcf;
+  --muted-foreground: #657568;
+  --accent: #287a55;
+  --accent-foreground: #ffffff;
+  --input-background: #ffffff;
+  --hover-background: #e3eee1;
+}
+:root[data-theme="green-dark"] {
+  color-scheme: dark;
+  --background: #0b1713;
+  --foreground: #e4f2e9;
+  --surface: #12231c;
+  --surface-muted: #1a3026;
+  --border: #29483a;
+  --muted-foreground: #a0b8aa;
+  --accent: #6ee7a8;
+  --accent-foreground: #102219;
+  --input-background: #102019;
+  --hover-background: #1d382b;
+}
+:root[data-theme="peach-light"] {
+  color-scheme: light;
+  --background: #fff6f0;
+  --foreground: #442c25;
+  --surface: #ffffff;
+  --surface-muted: #fbe7dc;
+  --border: #efd0bf;
+  --muted-foreground: #876c60;
+  --accent: #bd6746;
+  --accent-foreground: #ffffff;
+  --input-background: #ffffff;
+  --hover-background: #f8e5d9;
+}
+:root[data-theme="peach-dark"] {
+  color-scheme: dark;
+  --background: #211512;
+  --foreground: #f8e9e1;
+  --surface: #30201b;
+  --surface-muted: #412a23;
+  --border: #624137;
+  --muted-foreground: #c9a99b;
+  --accent: #ffb28e;
+  --accent-foreground: #321b12;
+  --input-background: #291b17;
+  --hover-background: #493027;
+}
+:root[data-theme="stone-light"] {
+  color-scheme: light;
+  --background: #f5f4f1;
+  --foreground: #302f2b;
+  --surface: #ffffff;
+  --surface-muted: #eae8e2;
+  --border: #d8d5cc;
+  --muted-foreground: #706e65;
+  --accent: #66665a;
+  --accent-foreground: #ffffff;
+  --input-background: #ffffff;
+  --hover-background: #e8e6df;
+}
+:root[data-theme="slate-dark"] {
+  color-scheme: dark;
+  --background: #0e1520;
+  --foreground: #e5edf7;
+  --surface: #152131;
+  --surface-muted: #202f42;
+  --border: #304258;
+  --muted-foreground: #a0b0c4;
+  --accent: #8bbcff;
+  --accent-foreground: #102038;
+  --input-background: #111c2b;
+  --hover-background: #26374d;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+}
+body {
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+/* Tailwind utility compatibility for pages that use shared utility classes. */
+:root[data-theme] .bg-white { background-color: var(--surface) !important; }
+:root[data-theme] .bg-gray-50,
+:root[data-theme] .bg-slate-50 { background-color: var(--surface-muted) !important; }
+:root[data-theme] .text-gray-900,
+:root[data-theme] .text-gray-800,
+:root[data-theme] .text-slate-900,
+:root[data-theme] .text-slate-800 { color: var(--foreground) !important; }
+:root[data-theme] .text-gray-700,
+:root[data-theme] .text-gray-600,
+:root[data-theme] .text-gray-500,
+:root[data-theme] .text-slate-700,
+:root[data-theme] .text-slate-600,
+:root[data-theme] .text-slate-500 { color: var(--muted-foreground) !important; }
+:root[data-theme] .border,
+:root[data-theme] .border-gray-100,
+:root[data-theme] .border-gray-200,
+:root[data-theme] .border-slate-100,
+:root[data-theme] .border-slate-200 { border-color: var(--border) !important; }
+:root[data-theme] input,
+:root[data-theme] select,
+:root[data-theme] textarea {
+  color: var(--foreground);
+  background-color: var(--input-background);
+  border-color: var(--border);
+}
+:root[data-theme] button:hover,
+:root[data-theme] a.rounded-lg:hover { background-color: var(--hover-background); }

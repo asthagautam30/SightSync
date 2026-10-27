@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import {
   doc,
@@ -12,89 +13,168 @@ import {
 import { db } from "@/lib/firebase";
 import { useAuth } from "../auth-provider";
 import {
+  DEFAULT_THRESHOLD_VALUES,
   SENSOR_THRESHOLDS,
   type SensorKey,
+  type ThresholdValues,
 } from "@/lib/sensor-thresholds";
 
 type ThresholdMode = "default" | "custom";
 
-type ThresholdValues = Record<SensorKey, number>;
-
 const DEFAULT_VALUES: ThresholdValues = {
-  uv: SENSOR_THRESHOLDS.uv.warningAbove ?? 50,
-  gas: SENSOR_THRESHOLDS.gas.warningAbove ?? 300,
-  light: SENSOR_THRESHOLDS.light.warningAbove ?? 500,
-  distance: SENSOR_THRESHOLDS.distance.warningBelow ?? 50,
+  ...DEFAULT_THRESHOLD_VALUES,
 };
 
 const SENSOR_ORDER: SensorKey[] = [
   "uv",
   "gas",
   "light",
-  "distance",
 ];
 
+const SENSOR_NAMES: Record<SensorKey, string> = {
+  uv: "UV Rays",
+  gas: "Gas Level",
+  light: "Light Intensity",
+  distance: "Distance",
+};
+
+const SENSOR_RANGES: Record<
+  SensorKey,
+  {
+    low: string;
+    medium: string;
+    high: string;
+    url: string;
+    linkLabel: string;
+    description: string;
+  }
+> = {
+  uv: {
+    low: "0–1000",
+    medium: "1001–3000",
+    high: "Above 3000",
+    url: "/help/alert-settings/uv",
+    linkLabel: "How to set UV limit? ↗",
+    description:
+      "A warning appears when the UV sensor reading rises above your chosen limit. These are device test readings, not a calibrated UV index.",
+  },
+
+  gas: {
+    low: "0–1000",
+    medium: "1001–2000",
+    high: "Above 2000",
+    url: "/help/alert-settings/gas",
+    linkLabel: "How to set gas limit? ↗",
+    description:
+      "A warning appears when the gas sensor reading rises above your chosen limit. These readings are not calibrated gas concentrations.",
+  },
+
+  light: {
+    low: "Below 400",
+    medium: "400–800",
+    high: "Above 800",
+    url: "/help/alert-settings/light",
+    linkLabel: "How to set light limit? ↗",
+    description:
+      "A low-light warning appears when the light sensor reading falls below your chosen limit. These are test readings, not calibrated lux values.",
+  },
+
+  distance: {
+    low: "Below 15 cm",
+    medium: "15–30 cm",
+    high: "Above 30 cm",
+    url: "/help/alert-settings/distance",
+    linkLabel: "How to set distance limit? ↗",
+    description:
+      "A viewing-distance warning is triggered when an object is closer than your configured distance limit.",
+  },
+};
+
+function isValidThreshold(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0
+  );
+}
+
+function getSavedValues(savedValues: unknown): ThresholdValues {
+  const saved = (savedValues ?? {}) as Partial<ThresholdValues>;
+
+  return {
+    uv: isValidThreshold(saved.uv)
+      ? saved.uv
+      : DEFAULT_VALUES.uv,
+
+    gas: isValidThreshold(saved.gas)
+      ? saved.gas
+      : DEFAULT_VALUES.gas,
+
+    light: isValidThreshold(saved.light)
+      ? saved.light
+      : DEFAULT_VALUES.light,
+
+    distance: isValidThreshold(saved.distance)
+      ? saved.distance
+      : DEFAULT_VALUES.distance,
+  };
+}
+
 export default function ThresholdSettingsPage() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
 
   const [mode, setMode] = useState<ThresholdMode>("default");
-  const [values, setValues] =
-    useState<ThresholdValues>(DEFAULT_VALUES);
-
-  const [pageLoading, setPageLoading] = useState(true);
+  const [values, setValues] = useState<ThresholdValues>({
+    ...DEFAULT_VALUES,
+  });
+  const [expanded, setExpanded] = useState<SensorKey | null>(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (loading) return;
-
-    if (!user) {
-      setPageLoading(false);
-      return;
-    }
-
     let cancelled = false;
 
     async function loadSettings() {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
       try {
-        const userRef = doc(db, "users", user!.uid);
+        const userRef = doc(db, "users", user.uid);
         const snapshot = await getDoc(userRef);
 
         if (cancelled) return;
 
         if (snapshot.exists()) {
-          const saved = snapshot.data().thresholdSettings;
+          const settings = snapshot.data().thresholdSettings;
 
-          if (saved?.mode === "custom" || saved?.mode === "default") {
-            setMode(saved.mode);
+          if (settings?.mode === "custom") {
+            setMode("custom");
+            setValues(getSavedValues(settings.values));
+          } else {
+            setMode("default");
+            setValues({ ...DEFAULT_VALUES });
           }
-
-          if (saved?.values) {
-            const loadedValues = saved.values;
-
-            setValues({
-              uv: validValue(loadedValues.uv, DEFAULT_VALUES.uv),
-              gas: validValue(loadedValues.gas, DEFAULT_VALUES.gas),
-              light: validValue(
-                loadedValues.light,
-                DEFAULT_VALUES.light
-              ),
-              distance: validValue(
-                loadedValues.distance,
-                DEFAULT_VALUES.distance
-              ),
-            });
-          }
+        } else {
+          setMode("default");
+          setValues({ ...DEFAULT_VALUES });
         }
       } catch (err) {
         console.error("Failed to load threshold settings:", err);
+
         if (!cancelled) {
-          setError("Unable to load settings. Please refresh the page.");
+          setError(
+            "Could not load settings. Please refresh the page."
+          );
         }
       } finally {
         if (!cancelled) {
-          setPageLoading(false);
+          setLoading(false);
         }
       }
     }
@@ -104,56 +184,63 @@ export default function ThresholdSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading]);
+  }, [user]);
 
-  function validValue(value: unknown, fallback: number): number {
-    return typeof value === "number" && Number.isFinite(value) && value > 0
-      ? value
-      : fallback;
-  }
-
-  function updateValue(sensor: SensorKey, value: string) {
+  function changeMode(newMode: ThresholdMode) {
+    setMode(newMode);
+    setExpanded(null);
     setStatus("");
     setError("");
 
-    const parsed = Number(value);
-
-    setValues((current) => ({
-      ...current,
-      [sensor]: value.trim() !== "" && Number.isFinite(parsed)
-        ? parsed
-        : 0,
-    }));
+    if (newMode === "default") {
+      setValues({ ...DEFAULT_VALUES });
+    }
   }
 
-  async function handleSave(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function updateValue(sensor: SensorKey, input: string) {
+    setValues((previous) => ({
+      ...previous,
+      [sensor]: input === "" ? 0 : Number(input),
+    }));
 
+    setStatus("");
+    setError("");
+  }
+
+  async function handleSave() {
     if (!user) {
       setError("Please log in to save your settings.");
       return;
     }
 
-    for (const sensor of SENSOR_ORDER) {
-      if (!Number.isFinite(values[sensor]) || values[sensor] <= 0) {
-        setError(
-          `Enter a valid positive number for ${SENSOR_THRESHOLDS[sensor].label}.`
-        );
-        return;
+    setStatus("");
+    setError("");
+
+    if (mode === "custom") {
+      for (const sensor of SENSOR_ORDER) {
+        if (!isValidThreshold(values[sensor])) {
+          setError(
+            `Enter a valid positive warning limit for ${SENSOR_NAMES[sensor]}.`
+          );
+          return;
+        }
       }
     }
 
     setSaving(true);
-    setStatus("");
-    setError("");
 
     try {
+      const valuesToSave: ThresholdValues =
+        mode === "custom"
+          ? { ...values }
+          : { ...DEFAULT_VALUES };
+
       await setDoc(
         doc(db, "users", user.uid),
         {
           thresholdSettings: {
             mode,
-            values,
+            values: valuesToSave,
             updatedAt: serverTimestamp(),
           },
           updatedAt: serverTimestamp(),
@@ -161,413 +248,485 @@ export default function ThresholdSettingsPage() {
         { merge: true }
       );
 
-      setStatus("Threshold settings saved successfully.");
+      setValues({ ...valuesToSave });
+
+      setStatus(
+        mode === "default"
+          ? "Default alert limits saved successfully."
+          : "Custom alert limits saved successfully."
+      );
     } catch (err) {
-      console.error("Failed to save threshold settings:", err);
-      setError("Unable to save settings. Check your connection and try again.");
+      console.error("Failed to save thresholds:", err);
+      setError("Could not save settings. Please try again.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading || pageLoading) {
-    return <main style={pageStyle}>Loading threshold settings...</main>;
-  }
-
   if (!user) {
     return (
-      <main style={pageStyle}>
-        <section style={containerStyle}>
-          <h1>Log in required</h1>
-          <p>Please log in to manage your threshold settings.</p>
-          <Link href="/login" style={primaryLinkStyle}>
-            Go to login
+      <main style={styles.page}>
+        <section style={styles.panel}>
+          <h1 style={styles.title}>Alert Settings</h1>
+          <p>Please log in to manage your thresholds.</p>
+          <Link href="/login" style={styles.button}>
+            Go to Login
           </Link>
         </section>
       </main>
     );
   }
 
+  if (loading) {
+    return (
+      <main style={styles.page}>
+        <p style={styles.muted}>Loading settings...</p>
+      </main>
+    );
+  }
+
   return (
-    <main style={pageStyle}>
-      <div style={containerStyle}>
-        <header style={headerStyle}>
-          <div>
-            <Link href="/dashboard" style={brandStyle}>
-              👓 Smart Spectacles
-            </Link>
-            <p style={subtitleStyle}>PERSONALIZED SENSOR SETTINGS</p>
-          </div>
+    <main style={styles.page}>
+      <div style={styles.container}>
+        <Link href="/dashboard" style={styles.backLink}>
+          ← Back to Dashboard
+        </Link>
 
-          <Link href="/dashboard" style={secondaryLinkStyle}>
-            ← Back to dashboard
-          </Link>
-        </header>
+        <h1 style={styles.title}>Alert Settings</h1>
 
-        <section style={heroStyle}>
-          <p style={eyebrowStyle}>YOUR PREFERENCES</p>
-          <h1 style={titleStyle}>Threshold Settings</h1>
-          <p style={mutedStyle}>
-            Choose the threshold values used by your Smart Spectacles
-            software. You can use the current defaults or enter your own
-            values.
+        <p style={styles.subtitle}>
+          Choose the default Wokwi test limits or customize warning
+          values for each sensor.
+        </p>
+
+        <section style={styles.notice} role="note">
+          <strong>Simulation thresholds</strong>
+          <p style={styles.noticeText}>
+            These values match your current Wokwi test configuration.
+            They are not calibrated real-world health or safety limits.
           </p>
         </section>
 
-        <div style={noticeStyle}>
-          <strong style={{ color: "#fcd34d" }}>
-            Development and test mode
-          </strong>
-          <p style={mutedStyle}>
-            The current defaults are software test values, not calibrated
-            real-world safety limits. Custom values are also experimental
-            until sensor calibration and appropriate safety limits have
-            been established.
-          </p>
-        </div>
+        <section style={styles.panel}>
+          <h2 style={styles.heading}>Settings Mode</h2>
 
-        <form onSubmit={handleSave} style={formStyle}>
-          <h2 style={sectionTitleStyle}>Choose your threshold mode</h2>
+          <div style={styles.modeRow}>
+            <label style={styles.radioLabel}>
+              <input
+                type="radio"
+                name="mode"
+                checked={mode === "default"}
+                onChange={() => changeMode("default")}
+                disabled={saving}
+              />
+              Default
+            </label>
 
-          <label style={choiceStyle}>
-            <input
-              type="radio"
-              name="thresholdMode"
-              value="default"
-              checked={mode === "default"}
-              onChange={() => {
-                setMode("default");
-                setStatus("");
-                setError("");
-              }}
-            />
-
-            <span>
-              <strong>Use default values</strong>
-              <span style={choiceDescriptionStyle}>
-                Use the application's current test thresholds.
-              </span>
-            </span>
-          </label>
-
-          <label style={choiceStyle}>
-            <input
-              type="radio"
-              name="thresholdMode"
-              value="custom"
-              checked={mode === "custom"}
-              onChange={() => {
-                setMode("custom");
-                setStatus("");
-                setError("");
-              }}
-            />
-
-            <span>
-              <strong>Set my own values</strong>
-              <span style={choiceDescriptionStyle}>
-                Enter personal software thresholds for each sensor.
-              </span>
-            </span>
-          </label>
-
-          <div style={dividerStyle} />
-
-          <h2 style={sectionTitleStyle}>Sensor thresholds</h2>
-
-          <p style={mutedStyle}>
-            {mode === "default"
-              ? "These are the current default test values. Select custom mode to edit them."
-              : "Enter a positive threshold value for each sensor."}
-          </p>
-
-          <div style={sensorGridStyle}>
-            {SENSOR_ORDER.map((sensor) => {
-              const threshold = SENSOR_THRESHOLDS[sensor];
-
-              const direction =
-                threshold.warningBelow !== undefined
-                  ? "Warn below this value"
-                  : "Warn above this value";
-
-              return (
-                <div key={sensor} style={sensorCardStyle}>
-                  <label htmlFor={`threshold-${sensor}`} style={labelStyle}>
-                    {threshold.label}
-                  </label>
-
-                  <p style={descriptionStyle}>{direction}</p>
-
-                  <div style={inputRowStyle}>
-                    <input
-                      id={`threshold-${sensor}`}
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      value={values[sensor]}
-                      disabled={mode === "default"}
-                      onChange={(event) =>
-                        updateValue(sensor, event.target.value)
-                      }
-                      style={{
-                        ...inputStyle,
-                        opacity: mode === "default" ? 0.65 : 1,
-                      }}
-                    />
-
-                    <span style={unitStyle}>
-                      {threshold.unit.trim() || "units"}
-                    </span>
-                  </div>
-
-                  <p style={descriptionStyle}>
-                    Current default: {DEFAULT_VALUES[sensor]}{" "}
-                    {threshold.unit.trim() || "units"}
-                  </p>
-
-                  <p style={descriptionStyle}>
-                    {threshold.description}
-                  </p>
-                </div>
-              );
-            })}
+            <label style={styles.radioLabel}>
+              <input
+                type="radio"
+                name="mode"
+                checked={mode === "custom"}
+                onChange={() => changeMode("custom")}
+                disabled={saving}
+              />
+              Custom
+            </label>
           </div>
+        </section>
 
-          {error && (
-            <p role="alert" style={errorStyle}>
-              {error}
-            </p>
-          )}
+        <section style={styles.panel}>
+          <h2 style={styles.heading}>Sensor Alert Limits</h2>
 
-          {status && (
-            <p role="status" style={successStyle}>
-              {status}
-            </p>
-          )}
+          {SENSOR_ORDER.map((sensor) => {
+            const range = SENSOR_RANGES[sensor];
+            const sensorInfo = SENSOR_THRESHOLDS[sensor];
+            const isExpanded = expanded === sensor;
 
-          <button type="submit" disabled={saving} style={buttonStyle}>
-            {saving ? "Saving settings..." : "Save threshold settings"}
+            const displayUnit =
+              sensor === "distance"
+                ? "cm"
+                : sensorInfo.unit;
+
+            const warningDirection =
+              sensor === "uv" || sensor === "gas"
+                ? "Warn when reading rises above the limit."
+                : "Warn when reading falls below the limit.";
+
+            return (
+              <article key={sensor} style={styles.sensor}>
+                <h3 style={styles.sensorTitle}>
+                  {SENSOR_NAMES[sensor]}
+                </h3>
+
+                <p style={styles.direction}>{warningDirection}</p>
+
+                {mode === "default" ? (
+                  <div style={styles.defaultRow}>
+                    <span style={styles.defaultLabel}>
+                      Warning Limit
+                    </span>
+
+                    <strong style={styles.defaultValue}>
+                      {DEFAULT_VALUES[sensor]} {displayUnit}
+                    </strong>
+                  </div>
+                ) : (
+                  <>
+                    <label
+                      style={styles.inputLabel}
+                      htmlFor={`threshold-${sensor}`}
+                    >
+                      Warning Limit
+                    </label>
+
+                    <div style={styles.inputRow}>
+                      <input
+                        id={`threshold-${sensor}`}
+                        type="number"
+                        min="0.000001"
+                        step="any"
+                        value={
+                          values[sensor] === 0
+                            ? ""
+                            : values[sensor]
+                        }
+                        onChange={(event) =>
+                          updateValue(sensor, event.target.value)
+                        }
+                        disabled={saving}
+                        aria-label={`${SENSOR_NAMES[sensor]} warning limit`}
+                        style={styles.input}
+                      />
+
+                      <span style={styles.unit}>{displayUnit}</span>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpanded(isExpanded ? null : sensor)
+                        }
+                        aria-expanded={isExpanded}
+                        aria-label={`Toggle ${SENSOR_NAMES[sensor]} suggested ranges`}
+                        title="Show suggested ranges"
+                        style={styles.expandButton}
+                      >
+                        {isExpanded ? "⌄" : "^"}
+                      </button>
+                    </div>
+
+                    <div style={styles.inputFooter}>
+                      <span style={styles.defaultHint}>
+                        Default: {DEFAULT_VALUES[sensor]} {displayUnit}
+                      </span>
+
+                      <Link
+                        href={range.url}
+                        style={styles.referenceLink}
+                      >
+                        {range.linkLabel}
+                      </Link>
+                    </div>
+
+                    <p style={styles.rangeNote}>
+                      {range.description}
+                    </p>
+
+                    {isExpanded && (
+                      <div style={styles.rangeBox}>
+                        <div style={styles.rangeRow}>
+                          <span>Low</span>
+                          <strong>{range.low}</strong>
+                        </div>
+
+                        <div style={styles.rangeRow}>
+                          <span>Medium</span>
+                          <strong>{range.medium}</strong>
+                        </div>
+
+                        <div style={styles.rangeRow}>
+                          <span>High</span>
+                          <strong>{range.high}</strong>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </section>
+
+        {status && (
+          <p role="status" style={styles.success}>
+            {status}
+          </p>
+        )}
+
+        {error && (
+          <p role="alert" style={styles.error}>
+            {error}
+          </p>
+        )}
+
+        <div style={styles.actions}>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              ...styles.button,
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? "Saving..." : "Save Settings"}
           </button>
 
-          <p style={footerNoteStyle}>
-            Your settings are saved to your signed-in user's Firestore
-            document. This page does not yet change the dashboard's
-            threshold calculations; we'll connect them in the next step.
-          </p>
-        </form>
+          <Link href="/dashboard" style={styles.cancelButton}>
+            Cancel
+          </Link>
+        </div>
       </div>
     </main>
   );
 }
 
-const pageStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  padding: "28px 18px 50px",
-  background:
-    "radial-gradient(ellipse at top, #142a42 0%, #08111f 46%, #050b14 100%)",
-  color: "#f1f5f9",
-  fontFamily: "Arial, Helvetica, sans-serif",
-};
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#0b1120",
+    color: "#e5e7eb",
+    padding: "28px 16px 48px",
+    fontFamily: "Arial, Helvetica, sans-serif",
+  },
 
-const containerStyle: React.CSSProperties = {
-  maxWidth: 960,
-  margin: "0 auto",
-};
+  container: {
+    maxWidth: "760px",
+    margin: "0 auto",
+  },
 
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: 16,
-  paddingBottom: 22,
-  borderBottom: "1px solid #20344b",
-};
+  panel: {
+    background: "#111b2e",
+    border: "1px solid #263449",
+    borderRadius: "12px",
+    padding: "18px",
+    marginTop: "18px",
+  },
 
-const brandStyle: React.CSSProperties = {
-  color: "#f1f5f9",
-  textDecoration: "none",
-  fontWeight: 800,
-  fontSize: 20,
-};
+  notice: {
+    background: "#17243a",
+    border: "1px solid #475569",
+    borderRadius: "10px",
+    padding: "14px 16px",
+    marginTop: "18px",
+    color: "#bfdbfe",
+    fontSize: "14px",
+    lineHeight: 1.5,
+  },
 
-const subtitleStyle: React.CSSProperties = {
-  color: "#67e8f9",
-  fontSize: 10,
-  letterSpacing: "1.5px",
-};
+  noticeText: {
+    color: "#cbd5e1",
+    margin: "6px 0 0",
+  },
 
-const heroStyle: React.CSSProperties = {
-  padding: "30px 0 22px",
-};
+  title: {
+    fontSize: "28px",
+    margin: "14px 0 8px",
+  },
 
-const eyebrowStyle: React.CSSProperties = {
-  color: "#67e8f9",
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: "1.8px",
-};
+  subtitle: {
+    color: "#aab5c5",
+    fontSize: "14px",
+    lineHeight: 1.5,
+  },
 
-const titleStyle: React.CSSProperties = {
-  fontSize: "clamp(30px, 5vw, 42px)",
-  margin: "10px 0",
-};
+  heading: {
+    fontSize: "18px",
+    margin: "0 0 14px",
+  },
 
-const mutedStyle: React.CSSProperties = {
-  color: "#91a4bb",
-  fontSize: 13,
-  lineHeight: 1.8,
-};
+  muted: {
+    color: "#aab5c5",
+  },
 
-const noticeStyle: React.CSSProperties = {
-  padding: 18,
-  background: "rgba(120, 80, 10, 0.12)",
-  border: "1px solid #665126",
-  borderRadius: 13,
-  marginBottom: 20,
-};
+  backLink: {
+    color: "#93c5fd",
+    textDecoration: "none",
+    fontSize: "14px",
+  },
 
-const formStyle: React.CSSProperties = {
-  padding: "clamp(18px, 3vw, 28px)",
-  background: "rgba(11, 23, 39, 0.92)",
-  border: "1px solid #20344b",
-  borderRadius: 16,
-};
+  modeRow: {
+    display: "flex",
+    gap: "24px",
+    flexWrap: "wrap",
+  },
 
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 19,
-  margin: "0 0 16px",
-};
+  radioLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    cursor: "pointer",
+    fontSize: "14px",
+  },
 
-const choiceStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 12,
-  padding: 16,
-  marginTop: 10,
-  background: "rgba(15, 30, 49, 0.65)",
-  border: "1px solid #31465e",
-  borderRadius: 11,
-  cursor: "pointer",
-};
+  sensor: {
+    padding: "15px 0",
+    borderBottom: "1px solid #29374c",
+  },
 
-const choiceDescriptionStyle: React.CSSProperties = {
-  display: "block",
-  color: "#91a4bb",
-  fontSize: 12,
-  lineHeight: 1.7,
-  marginTop: 5,
-};
+  sensorTitle: {
+    fontSize: "18px",
+    margin: "0 0 8px",
+    color: "#f9fafb",
+  },
 
-const dividerStyle: React.CSSProperties = {
-  height: 1,
-  background: "#20344b",
-  margin: "25px 0",
-};
+  direction: {
+    fontSize: "12px",
+    lineHeight: 1.5,
+    color: "#93c5fd",
+    margin: "0 0 12px",
+  },
 
-const sensorGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-  gap: 14,
-  marginTop: 20,
-};
+  defaultRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    fontSize: "14px",
+  },
 
-const sensorCardStyle: React.CSSProperties = {
-  padding: 17,
-  background: "linear-gradient(145deg, #102239, #0b1729)",
-  border: "1px solid #203a50",
-  borderRadius: 12,
-  minWidth: 0,
-};
+  defaultLabel: {
+    color: "#aab5c5",
+  },
 
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  color: "#e2eaf5",
-  fontSize: 13,
-  fontWeight: 700,
-  lineHeight: 1.6,
-};
+  defaultValue: {
+    color: "#bfdbfe",
+  },
 
-const descriptionStyle: React.CSSProperties = {
-  color: "#91a4bb",
-  fontSize: 11,
-  lineHeight: 1.7,
-};
+  inputLabel: {
+    display: "block",
+    fontSize: "13px",
+    marginBottom: "7px",
+    color: "#cbd5e1",
+  },
 
-const inputRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  marginTop: 12,
-};
+  inputRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  },
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  padding: "12px 10px",
-  background: "#07111e",
-  color: "#f1f5f9",
-  border: "1px solid #31465e",
-  borderRadius: 8,
-  fontSize: 15,
-};
+  input: {
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: "11px 13px",
+    background: "#0c1525",
+    border: "1px solid #334155",
+    borderRadius: "8px",
+    color: "#f9fafb",
+    fontSize: "15px",
+    outline: "none",
+  },
 
-const unitStyle: React.CSSProperties = {
-  color: "#91a4bb",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-};
+  unit: {
+    flexShrink: 0,
+    fontSize: "12px",
+    color: "#cbd5e1",
+  },
 
-const buttonStyle: React.CSSProperties = {
-  width: "100%",
-  marginTop: 22,
-  padding: 14,
-  border: "1px solid #67e8f9",
-  borderRadius: 10,
-  background: "#67e8f9",
-  color: "#07111e",
-  fontSize: 14,
-  fontWeight: 800,
-  cursor: "pointer",
-};
+  expandButton: {
+    flexShrink: 0,
+    width: "32px",
+    height: "34px",
+    borderRadius: "7px",
+    border: "1px solid #475569",
+    background: "#1e293b",
+    color: "#93c5fd",
+    fontSize: "20px",
+    cursor: "pointer",
+  },
 
-const primaryLinkStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "12px 15px",
-  background: "#67e8f9",
-  color: "#07111e",
-  borderRadius: 9,
-  textDecoration: "none",
-  fontWeight: 700,
-};
+  inputFooter: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+    marginTop: "7px",
+  },
 
-const secondaryLinkStyle: React.CSSProperties = {
-  color: "#67e8f9",
-  textDecoration: "none",
-  fontSize: 13,
-};
+  defaultHint: {
+    color: "#94a3b8",
+    fontSize: "12px",
+  },
 
-const errorStyle: React.CSSProperties = {
-  padding: 13,
-  border: "1px solid #7f2938",
-  borderRadius: 9,
-  background: "rgba(127, 29, 29, 0.25)",
-  color: "#fecdd3",
-  fontSize: 13,
-};
+  referenceLink: {
+    color: "#93c5fd",
+    fontSize: "12px",
+    textDecoration: "underline",
+  },
 
-const successStyle: React.CSSProperties = {
-  padding: 13,
-  border: "1px solid #166534",
-  borderRadius: 9,
-  background: "rgba(22, 101, 52, 0.2)",
-  color: "#86efac",
-  fontSize: 13,
-};
+  rangeBox: {
+    marginTop: "12px",
+    padding: "12px",
+    border: "1px solid #29374c",
+    borderRadius: "8px",
+    background: "#0b1424",
+  },
 
-const footerNoteStyle: React.CSSProperties = {
-  color: "#71869e",
-  fontSize: 12,
-  lineHeight: 1.8,
-  marginTop: 16,
+  rangeRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "12px",
+    marginBottom: "8px",
+    fontSize: "13px",
+  },
+
+  rangeNote: {
+    color: "#94a3b8",
+    fontSize: "12px",
+    lineHeight: 1.6,
+    margin: "10px 0 0",
+  },
+
+  actions: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    marginTop: "20px",
+  },
+
+  button: {
+    display: "inline-block",
+    padding: "11px 18px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#2563eb",
+    color: "#fff",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+    textDecoration: "none",
+  },
+
+  cancelButton: {
+    padding: "11px 18px",
+    borderRadius: "8px",
+    border: "1px solid #475569",
+    color: "#e5e7eb",
+    textDecoration: "none",
+    fontSize: "14px",
+  },
+
+  success: {
+    color: "#86efac",
+    fontSize: "14px",
+  },
+
+  error: {
+    color: "#fca5a5",
+    fontSize: "14px",
+  },
 };

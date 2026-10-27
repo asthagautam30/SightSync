@@ -7,7 +7,7 @@ import {
 import { db } from "@/lib/firebase";
 
 export type SensorAlert = {
-  sensor: "uv" | "gas" | "light" | "distance";
+  sensor: "uv" | "gas" | "light" | "distance" | "visualComfort";
   value: number | null;
   message: string;
   severity: "low" | "medium" | "high";

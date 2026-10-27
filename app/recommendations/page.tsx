@@ -1,6 +1,5 @@
 
 "use client";
-import { getSafetyPrecaution } from "@/lib/safety-precautions";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {

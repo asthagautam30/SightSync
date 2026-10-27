@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "./auth-provider";
+import { ThemeProvider } from "./theme-provider";
 
 export const metadata: Metadata = {
-  title: "Smart Spectacles",
-  description: "Smart Spectacles Environmental Safety System",
+  title: "SightSync",
+  description: "SightSync — Visual Comfort and Environmental Awareness",
 };
 
 export default function RootLayout({
@@ -13,9 +14,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try { var t = localStorage.getItem("smart-spectacles-theme"); if (["green-light","green-dark","peach-light","peach-dark","stone-light","slate-dark"].includes(t)) document.documentElement.dataset.theme = t; } catch (e) {}`,
+          }}
+        />
+      </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

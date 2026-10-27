@@ -1,11 +1,11 @@
 import {
   collection,
   getDocs,
+  orderBy,
   query,
   Timestamp,
   where,
 } from "firebase/firestore";
-
 import { db } from "@/lib/firebase";
 
 export type SensorKey = "uv" | "gas" | "light" | "distance";
@@ -25,6 +25,7 @@ export type DailySensorSummary = {
 };
 
 type SensorReading = {
+  deviceId?: string;
   timestamp?: Timestamp | Date | null;
   uv?: number | null;
   gas?: number | null;
@@ -121,24 +122,26 @@ export async function getDailySensorSummary(
     "sensorHistory"
   );
 
-  const historyQuery = query(
-    historyRef,
-    where(
-      "timestamp",
-      ">=",
-      Timestamp.fromDate(startOfBaseline)
-    ),
-    where(
-      "timestamp",
-      "<",
-      Timestamp.fromDate(startOfNextDay)
-    )
-  );
+const historyQuery = query(
+  historyRef,
+  where(
+    "timestamp",
+    ">=",
+    Timestamp.fromDate(startOfBaseline)
+  ),
+  where(
+    "timestamp",
+    "<",
+    Timestamp.fromDate(startOfNextDay)
+  )
+);
 
   const snapshot = await getDocs(historyQuery);
 
-  const allReadings = snapshot.docs.map(
-    (document) => document.data() as SensorReading
+  const allReadings = snapshot.docs
+  .map((document) => document.data() as SensorReading)
+  .filter(
+    (reading) => reading.deviceId === "Prachi-spectacles-001"
   );
 
   const selectedDateReadings = allReadings.filter((reading) => {

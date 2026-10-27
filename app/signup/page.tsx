@@ -4,7 +4,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { reload } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 export default function SignupPage() {
@@ -14,59 +18,110 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<"success" | "error">("error");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [signupComplete, setSignupComplete] = useState(false);
+  
+  
 
-  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setMessage("");
+  
+const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setMessage("");
+  setMessageType("error");
 
-    if (password.length < 6) {
-      setMessage("Your password must contain at least 6 characters.");
-      return;
+  const cleanEmail = email.trim();
+
+  if (password.length < 6) {
+    setMessage("Your password must contain at least 6 characters.");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    setMessage("The passwords do not match. Please try again.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      cleanEmail,
+      password
+    );
+
+    await sendEmailVerification(userCredential.user, {
+  url: typeof window !== "undefined" ? `${window.location.origin}/login` : "/login",
+  handleCodeInApp: false,
+});
+
+setMessageType("success");
+setMessage(
+  "Please verify your email. This page will open the dashboard automatically after verification."
+);
+
+
+const verificationInterval = setInterval(async () => {
+  try {
+    await reload(userCredential.user);
+
+    if (userCredential.user.emailVerified) {
+      clearInterval(verificationInterval);
+      router.replace("/dashboard");
     }
+  } catch (error) {
+    console.error("Verification check failed:", error);
+  }
+}, 3000);
 
-    if (password !== confirmPassword) {
-      setMessage("The passwords do not match. Please try again.");
-      return;
-    }
 
-    setLoading(true);
 
-    try {
-      await createUserWithEmailAndPassword(auth, email.trim(), password);
-      router.replace("/profile");
-    } catch (error: unknown) {
-      const code =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error
-          ? String(error.code)
-          : "";
+    // setMessageType("success");
+    // setMessage(
+    //   "Account created! Please check your email and click the verification link before logging in. Also check your spam folder."
+    // );
+    setPassword("");
+    setConfirmPassword("");
+    setSignupComplete(true);
+  } catch (error: unknown) {
+    console.error("SIGNUP ERROR:", error);
+    const code =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error
+        ? String(error.code)
+        : "";
 
-      let friendlyMessage =
-        "We couldn't create your account. Please try again.";
+    let friendlyMessage =
+      "We couldn't complete signup. Please try again.";
 
-      if (code === "auth/email-already-in-use") {
-        friendlyMessage =
-          "An account already exists with this email. Try logging in instead.";
-      } else if (code === "auth/invalid-email") {
-        friendlyMessage = "Please enter a valid email address.";
-      } else if (code === "auth/weak-password") {
-        friendlyMessage =
-          "Please choose a stronger password with at least 6 characters.";
-      } else if (code === "auth/network-request-failed") {
-        friendlyMessage =
-          "Network error. Check your internet connection and try again.";
-      } else if (code === "auth/operation-not-allowed") {
-        friendlyMessage =
-          "Email and password signup is not enabled in Firebase Authentication.";
-      }
+    if (code === "auth/email-already-in-use") {
+      friendlyMessage =
+        "An account already exists with this email. Please log in instead.";
+    } else if (code === "auth/invalid-email") {
+      friendlyMessage = "Please enter a valid email address.";
+    } else if (code === "auth/weak-password") {
+      friendlyMessage =
+        "Please choose a stronger password with at least 6 characters.";
+    } else if (code === "auth/network-request-failed") {
+      friendlyMessage =
+        "Network error. Check your internet connection and try again.";
+    } else if (code === "auth/operation-not-allowed") {
+      friendlyMessage =
+        "Email and password signup is not enabled in Firebase Authentication.";
+    } else if (code === "auth/too-many-requests") {
+  friendlyMessage =
+    "Firebase has temporarily blocked this request. No verification email was confirmed as sent. Please try again later.";
+}
 
-      setMessage(friendlyMessage);
-      setLoading(false);
-    }
-  };
+    setMessage(friendlyMessage);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <main style={styles.page}>
@@ -75,7 +130,7 @@ export default function SignupPage() {
       <header style={styles.header}>
         <Link href="/" style={styles.brand}>
           <span style={styles.brandIcon}>👓</span>
-          <span>Smart Spectacles</span>
+          <span>SightSync</span>
         </Link>
 
         <Link href="/" style={styles.backLink}>
@@ -97,7 +152,7 @@ export default function SignupPage() {
           </h1>
 
           <p style={styles.introText}>
-            Create your Smart Spectacles account to access environmental
+            Create your SightSync account to access environmental
             monitoring, sensor history, safety alerts, and personalized
             settings.
           </p>
@@ -169,10 +224,13 @@ export default function SignupPage() {
               />
             </div>
 
-            <div style={styles.field}>
-              <label htmlFor="password" style={styles.label}>
-                Password
-              </label>
+            
+                        {!signupComplete && (
+              <>
+                <div style={styles.field}>
+                  <label htmlFor="password" style={styles.label}>
+                    Password
+                  </label>
 
               <input
                 id="password"
@@ -209,21 +267,36 @@ export default function SignupPage() {
               />
             </div>
 
-            <label style={styles.showPassword}>
-              <input
-                type="checkbox"
-                checked={showPassword}
-                onChange={(e) => setShowPassword(e.target.checked)}
-                disabled={loading}
-              />
-              Show passwords
-            </label>
+            
+<button
+  type="button"
+  onClick={() => setShowPassword(!showPassword)}
+  disabled={loading}
+  style={{
+    background: "transparent",
+    border: "none",
+    color: "#67e8f9",
+    cursor: "pointer",
+    padding: 0,
+    textAlign: "left",
+    fontSize: 12,
+  }}
+>
+    {showPassword ? "🙈 Hide passwords" : "👁 Show passwords"}
+</button>
+              </>
+            )}
+
 
             {message && (
               <div
                 role="alert"
                 aria-live="polite"
-                style={styles.errorMessage}
+               style={{
+  ...(messageType === "success"
+    ? styles.successMessage
+    : styles.errorMessage),
+}}
               >
                 {message}
               </div>
@@ -262,7 +335,7 @@ export default function SignupPage() {
       </section>
 
       <footer style={styles.footer}>
-        © 2026 Smart Spectacles · Environmental awareness technology
+        © 2026 SightSync · Environmental awareness technology
       </footer>
     </main>
   );
@@ -543,4 +616,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#64748b",
     fontSize: 11,
   },
+  successMessage: {
+  padding: 12,
+  borderRadius: 9,
+  color: "#bbf7d0",
+  background: "rgba(20,83,45,0.25)",
+  border: "1px solid rgba(74,222,128,0.3)",
+  fontSize: 12,
+  lineHeight: 1.7,
+},
 };
