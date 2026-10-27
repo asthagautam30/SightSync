@@ -107,8 +107,10 @@ export async function POST(request: Request) {
   };
 
   try {
-    const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    // Try the configured model first, then lighter currently supported models if a model is overloaded.
+    // These models are documented by Google; access and free-tier quotas can still vary by account.
+    const configuredModel = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
+    const models = [...new Set([configuredModel, "gemini-3.6-flash", "gemini-3.5-flash-lite"])];
     const requestBody = JSON.stringify({
       systemInstruction: {
         parts: [{
@@ -122,36 +124,47 @@ export async function POST(request: Request) {
       generationConfig: {
         temperature: 0.2,
         responseMimeType: "application/json",
+        maxOutputTokens: 700,
       },
     });
 
-    // Retry once for temporary overload/server errors. Do not retry client/auth/quota errors.
     let response: Response | undefined;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const failures: string[] = [];
+    for (const model of models) {
       try {
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "x-goog-api-key": apiKey,
-            "Content-Type": "application/json",
+        const candidate = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: requestBody,
+            signal: AbortSignal.timeout(9000),
           },
-          body: requestBody,
-          signal: AbortSignal.timeout(20000),
-        });
+        );
+        if (candidate.ok) {
+          response = candidate;
+          break;
+        }
+        const details = await candidate.json().catch(() => null) as { error?: { message?: string } } | null;
+        const message = details?.error?.message?.slice(0, 140) ?? "";
+        failures.push(`${model}: HTTP ${candidate.status}${message ? ` - ${message}` : ""}`);
+        // Try another model only for unavailable/overloaded servers, not quota/auth errors.
+        if (![404, 500, 502, 503, 504].includes(candidate.status)) {
+          throw new Error(`Gemini API returned HTTP ${candidate.status}${message ? `: ${message}` : ""}`);
+        }
       } catch (error) {
-        if (attempt === 0 && error instanceof Error && error.name === "TimeoutError") {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (error instanceof Error && error.name === "TimeoutError") {
+          failures.push(`${model}: request timed out`);
           continue;
         }
         throw error;
       }
-
-      if (response.ok || (response.status < 500 && response.status !== 408)) break;
-      if (attempt === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-      }
     }
 
+    if (!response) throw new Error(`No Gemini model responded successfully. ${failures.join(" | ")}`);
     if (!response) throw new Error("Gemini API request did not return a response");
     if (!response.ok) {
       const details = await response.json().catch(() => null) as { error?: { message?: string } } | null;
@@ -170,6 +183,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       recommendations,
       source: "gemini_aggregate_personalization",
+      model: process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash",
       note: "AI-written suggestions are informational and do not replace fixed alerts or emergency guidance.",
     });
   } catch (error) {
