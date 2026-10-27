@@ -1499,7 +1499,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
             <div style={statusListStyle}>
 
-              {SENSOR_DETAILS.map((sensor) => {
+              {SENSOR_DETAILS.filter((sensor) => sensor.key !== "distance").map((sensor) => {
 
                 const warning =
 
