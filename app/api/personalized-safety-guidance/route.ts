@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
   try {
     const configuredModel = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
-    const models = [...new Set([configuredModel, "gemini-3.6-flash", "gemini-3.5-flash-lite"])];
+    const models = [...new Set(["gemini-3.5-flash-lite", configuredModel, "gemini-3.6-flash"])];
     const requestBody = JSON.stringify({
       systemInstruction: { parts: [{ text:
         "You are the personalization assistant for an experimental smart-spectacles sensor dashboard. For each supplied active sensor warning, write one clear, friendly, concise personalized tip (max 320 characters) using only the supplied profile and sensor context. Tailor to profile when relevant; never invent profile facts. The requiredSafetyAction is mandatory safety guidance: do not contradict, weaken, or omit it. UV values are not a calibrated UV index; gas readings do not identify gas or concentration; light readings do not establish eye harm; distance sensors cannot be relied on for navigation. Do not diagnose, claim a person or environment is safe, or infer medical conditions. For possible dangerous gas release, advise leaving the area and contacting local emergency services. Return JSON only: {\"tips\":[{\"sensor\":\"uv|gas|light|distance\",\"tip\":\"...\"}]}. Include exactly one tip for each supplied sensor."
