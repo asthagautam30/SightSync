@@ -14,11 +14,13 @@ try:
     from adaptive_thresholds import create_engines
     from adaptive_state import export_engine_state, restore_engine_state
     from risk_model import assess_risk
+    from anomaly_detection import detect_anomaly
 except ModuleNotFoundError:
     # Also works when imported from the repository root for diagnostics/tests.
     from ai.adaptive_thresholds import create_engines
     from ai.adaptive_state import export_engine_state, restore_engine_state
     from ai.risk_model import assess_risk
+    from ai.anomaly_detection import detect_anomaly
 
 FIREBASE_BASE = (
     "https://smart-spectacle-47402-default-rtdb.firebaseio.com/"
@@ -171,18 +173,18 @@ def main():
                 )
 
             if latest_results:
-                risk_assessment = assess_risk(
-                    data,
-                    {
-                        sensor: latest_results.get(sensor, {}).get("baseline")
-                        for sensor in SENSOR_KEYS
-                    },
-                )
+                baselines = {
+                    sensor: latest_results.get(sensor, {}).get("baseline")
+                    for sensor in SENSOR_KEYS
+                }
+                risk_assessment = assess_risk(data, baselines)
+                anomaly_assessment = detect_anomaly(data)
                 firebase_put(
                     FIREBASE_ADAPTIVE_URL,
                     {
                         "sensors": latest_results,
                         "riskAssessment": risk_assessment,
+                        "anomalyAssessment": anomaly_assessment,
                         "updatedAt": int(time.time() * 1000),
                     },
                     "Adaptive results",
