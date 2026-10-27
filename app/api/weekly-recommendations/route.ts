@@ -107,10 +107,10 @@ export async function POST(request: Request) {
   };
 
   try {
-    // Try the configured model first, then lighter currently supported models if a model is overloaded.
+    // Try the lighter free-tier model first, then alternatives if a model is unavailable or quota-limited.
     // These models are documented by Google; access and free-tier quotas can still vary by account.
     const configuredModel = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
-    const models = [...new Set([configuredModel, "gemini-3.6-flash", "gemini-3.5-flash-lite"])];
+    const models = [...new Set(["gemini-3.5-flash-lite", configuredModel, "gemini-3.6-flash"])];
     const requestBody = JSON.stringify({
       systemInstruction: {
         parts: [{
@@ -151,8 +151,9 @@ export async function POST(request: Request) {
         const details = await candidate.json().catch(() => null) as { error?: { message?: string } } | null;
         const message = details?.error?.message?.slice(0, 140) ?? "";
         failures.push(`${model}: HTTP ${candidate.status}${message ? ` - ${message}` : ""}`);
-        // Try another model only for unavailable/overloaded servers, not quota/auth errors.
-        if (![404, 500, 502, 503, 504].includes(candidate.status)) {
+        // Try another model on model-not-found, temporary server errors, or quota/rate-limit responses.
+        // Authentication/permission errors should stop immediately; switching models will not fix them.
+        if (![404, 429, 500, 502, 503, 504].includes(candidate.status)) {
           throw new Error(`Gemini API returned HTTP ${candidate.status}${message ? `: ${message}` : ""}`);
         }
       } catch (error) {
@@ -165,7 +166,6 @@ export async function POST(request: Request) {
     }
 
     if (!response) throw new Error(`No Gemini model responded successfully. ${failures.join(" | ")}`);
-    if (!response) throw new Error("Gemini API request did not return a response");
     if (!response.ok) {
       const details = await response.json().catch(() => null) as { error?: { message?: string } } | null;
       throw new Error(`Gemini API returned HTTP ${response.status}${details?.error?.message ? `: ${details.error.message.slice(0, 200)}` : ""}`);
