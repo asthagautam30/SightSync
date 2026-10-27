@@ -93,18 +93,26 @@ def assess_risk(readings: dict, baselines: dict | None = None) -> dict:
     fallback = rule_based_assessment(readings, baseline_values)
     model = _load_model()
     if model is None:
-        return fallback
+        reason = (
+            "No trained Random Forest artifact exists yet. The Isolation Forest anomaly model trains separately. "
+            "To enable this classifier, provide reviewed, labelled sensor outcomes and run "
+            "python -m ai.risk_model --train-csv path/to/reviewed_sensor_labels.csv."
+            if not MODEL_PATH.exists()
+            else "The Random Forest artifact exists but could not be loaded or did not match the expected feature schema. "
+                 "Re-train it from reviewed, labelled sensor outcomes."
+        )
+        return {**fallback, "modelReason": reason}
 
     values = []
     for key in SENSOR_KEYS:
         reading = _number(readings.get(key))
         if reading is None:
-            return {**fallback, "riskSource": "fixed_limit_fallback_missing_features"}
+            return {**fallback, "riskSource": "fixed_limit_fallback_missing_features", "modelReason": "One or more current sensor readings are missing or invalid."}
         values.append(reading)
     for key in SENSOR_KEYS:
         baseline = _number(baseline_values.get(key))
         if baseline is None:
-            return {**fallback, "riskSource": "fixed_limit_fallback_baseline_not_ready"}
+            return {**fallback, "riskSource": "fixed_limit_fallback_baseline_not_ready", "modelReason": "One or more sensor baselines are not established yet."}
         values.append(baseline)
 
     try:
