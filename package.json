@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -n WEB,AI,ADAPTIVE \"next dev\" \"python3 ai/ai_distance_test.py\" \"python3 ai/adaptive_firebase_test.py\"",
+    "dev": "concurrently -n WEB,AI,ADAPTIVE \"next dev\" \"python3 ai/ai_distance_test.py\" \"python3 ai/adaptive_firebase_test.py\"",
     "dev:web": "next dev",
     "dev:ai": "python3 ai/ai_distance_test.py",
     "dev:adaptive": "python3 ai/adaptive_firebase_test.py",
