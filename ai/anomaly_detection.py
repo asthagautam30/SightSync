@@ -10,11 +10,20 @@ from typing import Optional
 import json
 import math
 
-import joblib
-import numpy as np
-from sklearn.ensemble import IsolationForest
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+try:
+    import joblib
+    import numpy as np
+    from sklearn.ensemble import IsolationForest
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+    ML_DEPENDENCIES_AVAILABLE = True
+except ImportError:
+    joblib = None
+    np = None
+    IsolationForest = None
+    make_pipeline = None
+    StandardScaler = None
+    ML_DEPENDENCIES_AVAILABLE = False
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "models"
@@ -37,6 +46,11 @@ class AnomalyDetector:
         self._load_model()
 
     def _load_model(self) -> None:
+        if not ML_DEPENDENCIES_AVAILABLE:
+            self.model = None
+            self.status = "dependencies_missing"
+            self.error = "Install ai/requirements-ml.txt to enable anomaly model training/inference."
+            return
         if not self.model_path.is_file():
             self.model = None
             self.status = "model_unavailable"
@@ -96,6 +110,8 @@ class AnomalyDetector:
             self.error = str(exc)
             return {"trainingStatus": "sample_save_error", "trainingSamples": len(samples), "sampleAccepted": False}
 
+        if not ML_DEPENDENCIES_AVAILABLE:
+            return {"trainingStatus": "dependencies_missing", "trainingSamples": len(samples), "sampleAccepted": True, "modelTrained": False}
         needs_first_model = self.model is None and len(samples) >= MIN_TRAINING_SAMPLES
         needs_retrain = self.model is not None and len(samples) >= MIN_TRAINING_SAMPLES and (
             (len(samples) - MIN_TRAINING_SAMPLES) % RETRAIN_EVERY_NEW_SAMPLES == 0
@@ -148,6 +164,8 @@ class AnomalyDetector:
                 "validatedForRealWorldUse": False,
             }
         try:
+            if not ML_DEPENDENCIES_AVAILABLE:
+                raise RuntimeError("Install ai/requirements-ml.txt to enable anomaly inference.")
             features = np.asarray([values], dtype=float)
             prediction = int(self.model.predict(features)[0])
             score = float(self.model.decision_function(features)[0])
