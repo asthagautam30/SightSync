@@ -80,24 +80,48 @@ export async function POST(request: Request) {
   } : null;
 
   try {
-    const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text:
-            "You are the personalization assistant for an experimental smart-spectacles sensor dashboard. For each supplied active sensor warning, write one clear, friendly, concise personalized tip (max 320 characters) using only the supplied profile and sensor context. Tailor to profile when relevant; never invent profile facts. The requiredSafetyAction is mandatory safety guidance: do not contradict, weaken, or omit it. UV values are not a calibrated UV index; gas readings do not identify gas or concentration; light readings do not establish eye harm; distance sensors cannot be relied on for navigation. Do not diagnose, claim a person or environment is safe, or infer medical conditions. For possible dangerous gas release, advise leaving the area and contacting local emergency services. Return JSON only: {\"tips\":[{\"sensor\":\"uv|gas|light|distance\",\"tip\":\"...\"}]}. Include exactly one tip for each supplied sensor."
-          }] },
-          contents: [{ role: "user", parts: [{ text: JSON.stringify({ profile, precautions }) }] }],
-          generationConfig: { temperature: 0.25, responseMimeType: "application/json" },
-        }),
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
+    const configuredModel = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
+    const models = [...new Set([configuredModel, "gemini-3.6-flash", "gemini-3.5-flash-lite"])];
+    const requestBody = JSON.stringify({
+      systemInstruction: { parts: [{ text:
+        "You are the personalization assistant for an experimental smart-spectacles sensor dashboard. For each supplied active sensor warning, write one clear, friendly, concise personalized tip (max 320 characters) using only the supplied profile and sensor context. Tailor to profile when relevant; never invent profile facts. The requiredSafetyAction is mandatory safety guidance: do not contradict, weaken, or omit it. UV values are not a calibrated UV index; gas readings do not identify gas or concentration; light readings do not establish eye harm; distance sensors cannot be relied on for navigation. Do not diagnose, claim a person or environment is safe, or infer medical conditions. For possible dangerous gas release, advise leaving the area and contacting local emergency services. Return JSON only: {\"tips\":[{\"sensor\":\"uv|gas|light|distance\",\"tip\":\"...\"}]}. Include exactly one tip for each supplied sensor."
+      }] },
+      contents: [{ role: "user", parts: [{ text: JSON.stringify({ profile, precautions }) }] }],
+      generationConfig: { temperature: 0.25, responseMimeType: "application/json", maxOutputTokens: 800 },
+    });
 
-    if (!response.ok) throw new Error(`Gemini returned HTTP ${response.status}`);
+    let response: Response | undefined;
+    const failures: string[] = [];
+    for (const model of models) {
+      try {
+        const candidate = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: "POST",
+            headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+            body: requestBody,
+            signal: AbortSignal.timeout(9000),
+          },
+        );
+        if (candidate.ok) {
+          response = candidate;
+          break;
+        }
+        const details = await candidate.json().catch(() => null) as { error?: { message?: string } } | null;
+        const message = details?.error?.message?.slice(0, 120) ?? "";
+        failures.push(`${model}: HTTP ${candidate.status}${message ? ` - ${message}` : ""}`);
+        if (![404, 500, 502, 503, 504].includes(candidate.status)) {
+          throw new Error(`Gemini returned HTTP ${candidate.status}${message ? `: ${message}` : ""}`);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "TimeoutError") {
+          failures.push(`${model}: request timed out`);
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (!response) throw new Error(`No Gemini model responded successfully. ${failures.join(" | ")}`);
     const payload = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
     const parsed = JSON.parse(text) as { tips?: unknown };
