@@ -26,8 +26,18 @@ type AdaptiveSensorResult = {
   warning?: boolean;
   validatedForRealWorldUse?: boolean;
 };
+type RiskAssessment = {
+  risk?: string;
+  riskSource?: string;
+  triggeredSensors?: string[];
+  recommendations?: string[];
+  modelAvailable?: boolean;
+  modelPrediction?: string;
+  validatedForRealWorldUse?: boolean;
+};
 type AdaptiveFirebaseData = {
   sensors?: Partial<Record<SensorKey, AdaptiveSensorResult>>;
+  riskAssessment?: RiskAssessment;
   updatedAt?: number;
 };
 type SensorData = Partial<Record<SensorKey, number>> & {
@@ -113,6 +123,19 @@ export default function AdaptiveLearningPage() {
             {" · "}{isFresh ? "Live adaptive results" : "Stale/unavailable — fixed thresholds only"}
           </p>
         </header>
+
+        {isFresh && adaptiveData?.riskAssessment && (
+          <section style={{ ...panelStyle, marginTop: 20 }}>
+            <h2 style={{ fontSize: 19, margin: "0 0 10px" }}>AI Risk & Safety Review</h2>
+            <p style={metricStyle}>Assessment: <strong>{adaptiveData.riskAssessment.risk ?? "Unavailable"}</strong></p>
+            <p style={metricStyle}>Source: <strong>{adaptiveData.riskAssessment.modelAvailable ? "Random Forest + fixed safety override" : "Fixed-limit fallback (model not trained/available)"}</strong></p>
+            <p style={metricStyle}>Triggered sensors: <strong>{adaptiveData.riskAssessment.triggeredSensors?.join(", ") || "None detected by configured limits"}</strong></p>
+            <ul style={{ paddingLeft: 20, marginTop: 10, color: "#cbd5e1", fontSize: 13, lineHeight: 1.8 }}>
+              {(adaptiveData.riskAssessment.recommendations ?? []).map((item, index) => <li key={index}>{item}</li>)}
+            </ul>
+            <p style={{ ...mutedTextStyle, fontSize: 12 }}>Experimental only. A missing/untrained model falls back to fixed-limit checks; no result certifies real-world safety.</p>
+          </section>
+        )}
 
         {!adaptiveData?.sensors ? (
           <section style={{ ...panelStyle, marginTop: 20 }}>
