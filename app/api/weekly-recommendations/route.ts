@@ -108,29 +108,51 @@ export async function POST(request: Request) {
 
   try {
     const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: {
-        "x-goog-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{
-            text: "You write cautious, practical weekly recommendations for an experimental smart-spectacles sensor app. Use only the supplied aggregate statistics. Do not diagnose, claim the environment is safe, infer medical conditions, invent calibrated units, or change safety thresholds. Sensor values are uncalibrated project units except distance in cm. If gas may indicate a dangerous release, advise leaving the area and contacting local emergency services. Return a JSON object with a recommendations array containing 3-6 short actionable recommendations, no more than 240 characters each. State uncertainty when evidence is limited.",
-          }],
-        },
-        contents: [{
-          role: "user",
-          parts: [{ text: JSON.stringify(aggregate) }],
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const requestBody = JSON.stringify({
+      systemInstruction: {
+        parts: [{
+          text: "You write cautious, practical weekly recommendations for an experimental smart-spectacles sensor app. Use only the supplied aggregate statistics. Do not diagnose, claim the environment is safe, infer medical conditions, invent calibrated units, or change safety thresholds. Sensor values are uncalibrated project units except distance in cm. If gas may indicate a dangerous release, advise leaving the area and contacting local emergency services. Return a JSON object with a recommendations array containing 3-6 short actionable recommendations, no more than 240 characters each. State uncertainty when evidence is limited.",
         }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      }),
-      signal: AbortSignal.timeout(12000),
+      },
+      contents: [{
+        role: "user",
+        parts: [{ text: JSON.stringify(aggregate) }],
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
     });
+
+    // Retry once for temporary overload/server errors. Do not retry client/auth/quota errors.
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: requestBody,
+          signal: AbortSignal.timeout(20000),
+        });
+      } catch (error) {
+        if (attempt === 0 && error instanceof Error && error.name === "TimeoutError") {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+        throw error;
+      }
+
+      if (response.ok || (response.status < 500 && response.status !== 408)) break;
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+    }
+
+    if (!response) throw new Error("Gemini API request did not return a response");
     if (!response.ok) {
       const details = await response.json().catch(() => null) as { error?: { message?: string } } | null;
       throw new Error(`Gemini API returned HTTP ${response.status}${details?.error?.message ? `: ${details.error.message.slice(0, 200)}` : ""}`);
