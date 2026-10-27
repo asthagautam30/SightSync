@@ -79,7 +79,18 @@ def _load_model():
         payload = joblib.load(MODEL_PATH)
         model = payload.get("model") if isinstance(payload, dict) else None
         feature_order = payload.get("feature_order") if isinstance(payload, dict) else None
-        if model is None or feature_order != FEATURE_ORDER:
+        evaluation = payload.get("evaluation") if isinstance(payload, dict) else None
+        # Never activate an artifact unless it records passing held-out metrics.
+        macro_f1 = evaluation.get("macroF1") if isinstance(evaluation, dict) else None
+        balanced_accuracy = evaluation.get("balancedAccuracy") if isinstance(evaluation, dict) else None
+        if (
+            model is None
+            or feature_order != FEATURE_ORDER
+            or not isinstance(macro_f1, (int, float))
+            or not isinstance(balanced_accuracy, (int, float))
+            or macro_f1 < 0.65
+            or balanced_accuracy < 0.65
+        ):
             return None
         return model
     except Exception as exc:
