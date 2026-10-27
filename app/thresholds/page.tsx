@@ -36,7 +36,6 @@ const SENSOR_NAMES: Record<SensorKey, string> = {
   uv: "UV Rays",
   gas: "Gas Level",
   light: "Light Intensity",
-  distance: "Viewing Distance",
 };
 
 const SENSOR_RANGES: Record<
@@ -57,7 +56,7 @@ const SENSOR_RANGES: Record<
     url: "/help/alert-settings/uv",
     linkLabel: "How to set UV limit? ↗",
     description:
-      "A warning is triggered when the raw UV sensor reading rises above your configured limit. These are simulation values, not a calibrated UV index.",
+      "A warning appears when the UV sensor reading rises above your chosen limit. These are device test readings, not a calibrated UV index.",
   },
 
   gas: {
@@ -67,7 +66,7 @@ const SENSOR_RANGES: Record<
     url: "/help/alert-settings/gas",
     linkLabel: "How to set gas limit? ↗",
     description:
-      "A warning is triggered when the raw gas sensor reading rises above your configured limit. These values are not calibrated gas concentrations.",
+      "A warning appears when the gas sensor reading rises above your chosen limit. These readings are not calibrated gas concentrations.",
   },
 
   light: {
@@ -77,7 +76,7 @@ const SENSOR_RANGES: Record<
     url: "/help/alert-settings/light",
     linkLabel: "How to set light limit? ↗",
     description:
-      "A low-light warning is triggered when the raw light sensor reading falls below your configured limit. These are test values, not calibrated lux values.",
+      "A low-light warning appears when the light sensor reading falls below your chosen limit. These are test readings, not calibrated lux values.",
   },
 
   distance: {
