@@ -55,28 +55,28 @@ const SENSORS: {
 }[] = [
   {
     key: "uv",
-    label: "UV sensor",
+    label: "UV readings",
     unit: "sensor units",
     precaution:
       "Review elevated readings and consider shade and suitable sun protection outdoors. The sensor is not a calibrated UV index.",
   },
   {
     key: "gas",
-    label: "Gas / smoke sensor",
+    label: "Gas and smoke readings",
     unit: "sensor units",
     precaution:
       "Review elevated readings and possible environmental sources. If a dangerous gas release is suspected, leave the area and contact local emergency services.",
   },
   {
     key: "light",
-    label: "Light sensor",
+    label: "Light levels",
     unit: "sensor units",
     precaution:
       "Review changes in brightness and adjust your surroundings if needed. Brightness alone does not establish that light is harmful.",
   },
   {
     key: "distance",
-    label: "Distance sensor",
+    label: "Viewing distance",
     unit: "cm",
     precaution:
       "Review unusually short distance readings and keep checking your path. Never rely on the sensor alone for navigation.",
@@ -203,18 +203,18 @@ export async function generateWeeklyAIReport(
     );
   } else {
     observations.push(
-      `Collected ${readings.length} sensor-history records during the reporting period.`
+      `Your device saved ${readings.length} readings this week.`
     );
 
     observations.push(
-      `${warningReadings} records were marked as warnings in the saved history. These records may not represent every live or custom-threshold warning.`
+      `${warningReadings} saved records were marked as warnings. This may not include every alert shown live on your device.`
     );
 
     for (const stat of sensorStats) {
       const daily = stat.dailyAverages;
 
       observations.push(
-        `${stat.label}: average ${stat.average} ${stat.unit}, minimum ${stat.minimum}, maximum ${stat.maximum}, across ${stat.readingCount} readings.`
+        `${stat.label}: ${stat.readingCount} readings were saved. The typical reading was ${stat.average}; values ranged from ${stat.minimum} to ${stat.maximum}. These are device readings, not necessarily calibrated real-world measurements.`
       );
 
       if (daily.length >= 2) {
@@ -252,7 +252,7 @@ export async function generateWeeklyAIReport(
     summary:
       readings.length === 0
         ? "There is not enough recorded sensor history to produce a meaningful weekly summary yet. Keep the device connected and recording."
-        : `Your weekly report summarizes ${sensorStats.length} sensor types from ${readings.length} saved records. It contains ${warningReadings} records marked as warnings. Review the observations and precautions below.`,
+        : `Here is your week at a glance: ${readings.length} readings were saved across ${sensorStats.length} sensor types, with ${warningReadings} records marked as warnings. Review the notes and simple next steps below.`,
     observations,
     precautions,
     sensorStats,
