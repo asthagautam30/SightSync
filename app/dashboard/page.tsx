@@ -1112,7 +1112,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           <div>
 
-            <p style={eyebrowStyle}>YOUR SAFETY OVERVIEW</p>
+            <p style={eyebrowStyle}>VISUAL COMFORT OVERVIEW</p>
 
             <h1 style={heroTitleStyle}>
 
@@ -1328,7 +1328,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           <div style={sensorGridStyle}>
 
-            {SENSOR_DETAILS.map((sensor) => (
+            {SENSOR_DETAILS.filter((sensor) => sensor.key !== "distance").map((sensor) => (
 
               <SensorCard
 
@@ -1383,10 +1383,10 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
                 style={{
                   ...sensorValueStyle,
                   fontSize: 25,
-                  color: data?.ai?.warning ? "#fda4af" : "#86efac",
+                  color: !data?.ai ? "#fcd34d" : data.ai.warning ? "#fda4af" : "#86efac",
                 }}
               >
-                {data?.ai?.warning ? "Warning" : "Normal"}
+                {!data?.ai ? "Waiting for AI" : data.ai.warning ? "Warning" : "Normal"}
               </p>
               <p style={summaryDetailStyle}>
                 {data?.ai?.warning
