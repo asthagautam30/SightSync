@@ -29,7 +29,6 @@ const SENSOR_ORDER: SensorKey[] = [
   "uv",
   "gas",
   "light",
-  "distance",
 ];
 
 const SENSOR_NAMES: Record<SensorKey, string> = {
