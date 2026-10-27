@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 x.env.local
+# Locally learned sensor models and samples (never commit user sensor data)
+ai/models/*.joblib
+ai/models/normal_sensor_samples.json
