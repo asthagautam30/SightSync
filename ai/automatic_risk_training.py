@@ -32,6 +32,7 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "models"
 RECORDS_PATH = DATA_DIR / "risk_training_records.jsonl"
+ATTEMPT_PATH = DATA_DIR / "risk_training_last_attempt.json"
 MODEL_PATH = BASE_DIR / "risk_random_forest.joblib"
 FIREBASE_BASE = "https://smart-spectacle-47402-default-rtdb.firebaseio.com/devices/Prachi-spectacles-001/"
 LABELS_URL = FIREBASE_BASE + "risk_training/reviewed_labels.json"
@@ -211,6 +212,17 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
         except Exception:
             pass
 
+    try:
+        if ATTEMPT_PATH.is_file():
+            previous_attempt = json.loads(ATTEMPT_PATH.read_text(encoding="utf-8"))
+            if (previous_attempt.get("training_fingerprint") == training_fingerprint
+                    and previous_attempt.get("trainingStatus") == "evaluation_failed"):
+                status.update(previous_attempt.get("status", {}))
+                status["message"] = "This reviewed dataset already failed held-out evaluation; add new reviewed examples before another attempt. Fixed safety checks remain authoritative."
+                return status
+    except (OSError, ValueError, AttributeError):
+        pass
+
     X = np.asarray([row[0] for row in rows], dtype=float)
     y = np.asarray([row[1] for row in rows], dtype=str)
     try:
@@ -236,6 +248,15 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
         if macro_f1 < MIN_MACRO_F1 or balanced < MIN_BALANCED_ACCURACY:
             status.update(trainingStatus="evaluation_failed",
                           message="Candidate failed held-out evaluation; no new model was promoted. Fixed safety checks remain authoritative.")
+            try:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                ATTEMPT_PATH.write_text(json.dumps({
+                    "training_fingerprint": training_fingerprint,
+                    "trainingStatus": "evaluation_failed",
+                    "status": {key: value for key, value in status.items() if key != "updatedAt"},
+                }, allow_nan=False), encoding="utf-8")
+            except (OSError, ValueError):
+                pass
             return status
 
         temporary = MODEL_PATH.with_suffix(".candidate.joblib")
@@ -275,19 +296,22 @@ def update_pipeline(readings: dict, baselines: dict, eligible: bool,
             latest["samplePublishError"] = str(error)
     records = read_records()
     labels = reviewed_labels()
-    # Persist reviewed annotations for auditability; do not synthesize labels.
+    # Persist reviewed annotations only when a new label arrives.
+    labels_changed = False
     for record in records:
         label = labels.get(record.get("sampleId"))
-        if label:
+        if label and (record.get("riskLabel") != label or record.get("labelReviewed") is not True):
             record.update(riskLabel=label, labelReviewed=True, labelSource="firebase_reviewed_labels")
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        RECORDS_PATH.write_text(
-            "".join(json.dumps(record, allow_nan=False) + "\n" for record in records),
-            encoding="utf-8",
-        )
-    except (OSError, ValueError):
-        pass
+            labels_changed = True
+    if labels_changed:
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            RECORDS_PATH.write_text(
+                "".join(json.dumps(record, allow_nan=False) + "\\n" for record in records),
+                encoding="utf-8",
+            )
+        except (OSError, ValueError):
+            pass
     status = training_status(records, labels)
     status.update(
         latestSampleId=latest.get("sampleId"),
