@@ -93,7 +93,7 @@ export default function AdaptiveLearningPage() {
     <main style={pageStyle}>
       <div style={{ maxWidth: 1120, margin: "0 auto" }}>
         <header style={{ paddingBottom: 22, borderBottom: "1px solid #20344b" }}>
-          <Link href="/" style={{ color: "#f1f5f9", textDecoration: "none", fontWeight: 800 }}>Smart Spectacles</Link>
+          <Link href="/" style={{ color: "#f1f5f9", textDecoration: "none", fontWeight: 800 }}>SightSync</Link>
           <nav aria-label="Main navigation" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "18px 0" }}>
             <Link href="/dashboard" style={navLinkStyle}>Dashboard</Link>
             <Link href="/history" style={navLinkStyle}>Sensor History</Link>
@@ -105,25 +105,12 @@ export default function AdaptiveLearningPage() {
           </nav>
           <p style={{ color: "#67e8f9", fontSize: 10, fontWeight: 800, letterSpacing: "1.8px" }}>EXPERIMENTAL LEARNING</p>
           <h1 style={{ fontSize: "clamp(30px, 5vw, 44px)", lineHeight: 1.15, margin: "0 0 14px" }}>🧠 Adaptive Learning</h1>
-          <p style={mutedTextStyle}>See the current Visual Comfort assessment and how adaptive learning tracks environmental sensor patterns. Viewing distance remains an internal input to the visual-comfort calculation.</p>
+          <p style={mutedTextStyle}>See how adaptive learning tracks environmental sensor patterns. Viewing distance remains an internal input to the visual-comfort calculation.</p>
           <p style={{ ...mutedTextStyle, fontSize: 12 }}>
             Last updated: {updatedAt ? new Date(updatedAt).toLocaleTimeString() : "Waiting for first update"}
             {" · "}{isFresh ? "Live adaptive results" : "Stale/unavailable — fixed thresholds only"}
           </p>
         </header>
-
-        <section style={{ ...panelStyle, marginTop: 20, borderColor: sensorData?.ai ? (sensorData.ai.warning ? "#7f1d1d" : "#164e63") : "#854d0e" }}>
-          <p style={{ color: "#67e8f9", fontSize: 10, fontWeight: 800, letterSpacing: "1.5px" }}>CURRENT ASSESSMENT</p>
-          <h2 style={{ fontSize: 24, margin: "8px 0 12px" }}>👁️ Visual Comfort</h2>
-          <p style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", color: !sensorData?.ai ? "#fcd34d" : sensorData.ai.warning ? "#fda4af" : "#86efac" }}>
-            {!sensorData?.ai ? "Waiting for AI data" : sensorData.ai.warning ? "Warning" : "Normal"}
-          </p>
-          <p style={mutedTextStyle}>
-            {!sensorData?.ai ? "The visual-comfort assessment will appear when AI data arrives." : sensorData.ai.warning ? "Please take a break from close or prolonged viewing." : "No Visual Comfort warning reported by AI."}
-          </p>
-          {sensorData?.ai && <p style={metricStyle}>Viewing session time: <strong>{sensorData.ai.viewingTime ?? "—"} seconds</strong></p>}
-          <p style={{ ...mutedTextStyle, fontSize: 12 }}>Distance is used internally by the visual-comfort logic and is not shown as a separate feature.</p>
-        </section>
 
         {!adaptiveData?.sensors ? (
           <section style={{ ...panelStyle, marginTop: 20 }}>
