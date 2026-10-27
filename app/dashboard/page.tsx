@@ -69,6 +69,19 @@ type AdaptiveFirebaseData = {
   updatedAt?: number;
 };
 
+type RiskTrainingStatus = {
+  collectedRecords?: number;
+  eligibleRecords?: number;
+  reviewedLabelCount?: number;
+  eligibleReviewedLabelCount?: number;
+  classCounts?: Record<string, number>;
+  trainingStatus?: string;
+  modelAvailable?: boolean;
+  message?: string;
+  updatedAt?: number;
+  evaluation?: { macroF1?: number; balancedAccuracy?: number };
+};
+
 type SensorData = {
 
   uv?: number;
@@ -258,6 +271,9 @@ export default function DashboardPage() {
 
   const [adaptiveData, setAdaptiveData] =
   useState<AdaptiveFirebaseData | null>(null);
+
+  const [riskTrainingStatus, setRiskTrainingStatus] =
+    useState<RiskTrainingStatus | null>(null);
 
   const [adaptiveLastUpdated, setAdaptiveLastUpdated] =
   useState<number | null>(null);
@@ -450,6 +466,17 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   // Subscribe to live Firebase sensor readings.
+
+useEffect(() => {
+  const trainingStatusRef = ref(
+    realtimeDb,
+    "devices/Prachi-spectacles-001/risk_training/status"
+  );
+  const unsubscribe = onValue(trainingStatusRef, (snapshot) => {
+    setRiskTrainingStatus(snapshot.exists() ? snapshot.val() as RiskTrainingStatus : null);
+  });
+  return () => unsubscribe();
+}, []);
 
 useEffect(() => {
   const adaptiveRef = ref(
@@ -1295,6 +1322,41 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           />
 
+        </section>
+
+        {/* AI/ML training readiness — informational only, never a safety control */}
+        <section style={sectionStyle} aria-labelledby="risk-training-title">
+          <p style={eyebrowStyle}>AI / ML STATUS</p>
+          <h2 id="risk-training-title" style={sectionTitleStyle}>Risk model training</h2>
+          <p style={mutedTextStyle}>
+            Sensor samples are collected automatically. Only reviewed risk labels can train the Random Forest; fixed safety checks remain active regardless of model status.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginTop: 16 }}>
+            {[
+              { label: "Collected records", value: riskTrainingStatus?.collectedRecords ?? 0 },
+              { label: "Eligible records", value: riskTrainingStatus?.eligibleRecords ?? 0 },
+              { label: "Reviewed labels", value: riskTrainingStatus?.eligibleReviewedLabelCount ?? 0 },
+            ].map((item) => (
+              <div key={item.label} style={{ padding: 14, borderRadius: 12, border: "1px solid #203a50", background: "#0b1729" }}>
+                <p style={{ ...mutedTextStyle, margin: 0 }}>{item.label}</p>
+                <strong style={{ display: "block", marginTop: 6, fontSize: 24, color: "#67e8f9" }}>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: "14px 0 4px", color: "#dce8f6" }}>
+            Status: <strong>{riskTrainingStatus?.trainingStatus?.replaceAll("_", " ") ?? "Waiting for AI runner"}</strong>
+          </p>
+          <p style={mutedTextStyle}>
+            {riskTrainingStatus?.message ?? "Training status will appear after the Python adaptive runner publishes its first update."}
+          </p>
+          {riskTrainingStatus?.evaluation && (
+            <p style={mutedTextStyle}>
+              Latest evaluation — Macro F1: {riskTrainingStatus.evaluation.macroF1 ?? "N/A"}; balanced accuracy: {riskTrainingStatus.evaluation.balancedAccuracy ?? "N/A"}.
+            </p>
+          )}
+          <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
+            The classifier is experimental and is not validated for real-world safety use.
+          </p>
         </section>
 
         {/* Live sensor readings */}
