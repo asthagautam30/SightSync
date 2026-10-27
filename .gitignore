@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 x.env.local
+# AI/ML generated files
+ai/__pycache__/
+ai/models/
