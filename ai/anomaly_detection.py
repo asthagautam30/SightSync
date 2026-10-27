@@ -99,7 +99,16 @@ class AnomalyDetector:
         """Collect only readings already cleared by independent warning checks."""
         values = self._validate_readings(readings)
         if not eligible_for_learning or values is None:
-            return {"trainingStatus": self.status, "trainingSamples": len(self._read_samples()), "sampleAccepted": False}
+            # Keep model state accurate even when the current reading is unsafe.
+            # An ineligible reading pauses collection; it does not untrain an existing model.
+            existing_samples = len(self._read_samples())
+            return {
+                "trainingStatus": self.status,
+                "trainingSamples": existing_samples,
+                "sampleAccepted": False,
+                "modelTrained": self.model is not None,
+                "trainingRows": self.training_rows or (existing_samples if self.model is not None else 0),
+            }
         samples = self._read_samples()
         samples.append(values)
         samples = samples[-MAX_SAMPLES:]
