@@ -1,8 +1,8 @@
 """
-Test the saved Smart Spectacles risk model using rows from the training CSV.
+Smoke-test the saved Smart Spectacles risk model using distinct sensor readings.
 
-This is a smoke test, not an independent accuracy evaluation: these examples
-come from the same CSV used to train the model and may be synthetic.
+This is not independent model evaluation: the examples are taken from the
+training CSV and may be synthetic.
 """
 from pathlib import Path
 
@@ -34,8 +34,14 @@ def main() -> None:
             "CSV columns do not match the model. Missing: " + ", ".join(missing)
         )
 
-    # Use a small sample to confirm the saved model can load and make predictions.
-    sample = df[features].head(10).apply(pd.to_numeric, errors="coerce")
+    feature_data = df[features].apply(pd.to_numeric, errors="coerce")
+    unique_data = feature_data.drop_duplicates().dropna(how="all")
+    duplicate_count = len(feature_data) - len(unique_data)
+    sample = unique_data.head(10)
+
+    if sample.empty:
+        raise ValueError("The CSV has no usable sensor feature rows.")
+
     predictions = pipeline.predict(sample)
     probabilities = pipeline.predict_proba(sample)
     classes = list(pipeline.named_steps["classifier"].classes_)
@@ -43,10 +49,20 @@ def main() -> None:
     print("Smart Spectacles risk model smoke test")
     print("=" * 42)
     print(f"Loaded model: {MODEL_PATH}")
-    print(f"Test rows: {len(sample)}")
-    print("\nPredictions (sample rows from the training CSV):")
-    for index, (prediction, probability_row) in enumerate(
-        zip(predictions, probabilities), start=1
+    print(f"Rows in CSV: {len(df)}")
+    print(f"Distinct sensor feature rows: {len(unique_data)}")
+    print(f"Duplicate feature rows: {duplicate_count}")
+    print(f"Distinct rows tested: {len(sample)}")
+
+    if len(sample) < 10:
+        print(
+            "\nWARNING: Fewer than 10 distinct sensor readings are available. "
+            "Your dataset contains many repeated feature combinations."
+        )
+
+    print("\nPredictions (distinct feature rows from the training CSV):")
+    for index, (row_index, prediction, probability_row) in enumerate(
+        zip(sample.index, predictions, probabilities), start=1
     ):
         confidence = max(probability_row) * 100
         probability_text = ", ".join(
@@ -54,14 +70,14 @@ def main() -> None:
             for label, probability in zip(classes, probability_row)
         )
         print(
-            f"Row {index:02d}: predicted={prediction} | "
-            f"model score={confidence:.1f}% | {probability_text}"
+            f"Sample {index:02d} (CSV row {row_index + 2}): "
+            f"predicted={prediction} | model score={confidence:.1f}% | "
+            f"{probability_text}"
         )
 
     print(
-        "\nNOTE: This only verifies that inference works. These rows are from "
-        "the training dataset, so this output is not independent validation "
-        "and must not be interpreted as real-world accuracy or a safety guarantee."
+        "\nNOTE: This verifies inference only. Samples come from the training "
+        "CSV, so results are not independent validation and are not a safety guarantee."
     )
 
 
