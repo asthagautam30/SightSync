@@ -14,13 +14,13 @@ try:
     from adaptive_thresholds import create_engines
     from adaptive_state import export_engine_state, restore_engine_state
     from risk_model import assess_risk
-    from anomaly_detection import detect_anomaly
+    from anomaly_detection import detect_anomaly, observe_normal_reading
 except ModuleNotFoundError:
     # Also works when imported from the repository root for diagnostics/tests.
     from ai.adaptive_thresholds import create_engines
     from ai.adaptive_state import export_engine_state, restore_engine_state
     from ai.risk_model import assess_risk
-    from ai.anomaly_detection import detect_anomaly
+    from ai.anomaly_detection import detect_anomaly, observe_normal_reading
 
 FIREBASE_BASE = (
     "https://smart-spectacle-47402-default-rtdb.firebaseio.com/"
@@ -124,11 +124,13 @@ def main():
 
             print(f"\nLatest Firebase readings ({time.strftime('%H:%M:%S')}):")
             latest_results = {}
+            all_sensors_learning_eligible = True
 
             for sensor in SENSOR_KEYS:
                 reading = data.get(sensor)
                 if not isinstance(reading, (int, float)) or isinstance(reading, bool):
                     print(f"  {sensor}: no valid numeric reading")
+                    all_sensors_learning_eligible = False
                     continue
 
                 reading_value = float(reading)
@@ -138,6 +140,8 @@ def main():
                 adaptive_warning = engine.is_warning(reading_value)
 
                 # Never learn from a reading that trips fixed or current adaptive warning.
+                if fixed_warning or adaptive_warning:
+                    all_sensors_learning_eligible = False
                 result = engine.observe(
                     reading_value,
                     hazardous=(fixed_warning or adaptive_warning),
@@ -178,7 +182,19 @@ def main():
                     for sensor in SENSOR_KEYS
                 }
                 risk_assessment = assess_risk(data, baselines)
+                training_result = observe_normal_reading(
+                    data,
+                    eligible_for_learning=(
+                        all_sensors_learning_eligible
+                        and len(latest_results) == len(SENSOR_KEYS)
+                        and all(
+                            latest_results.get(sensor, {}).get("baselineEstablished") is True
+                            for sensor in SENSOR_KEYS
+                        )
+                    ),
+                )
                 anomaly_assessment = detect_anomaly(data)
+                anomaly_assessment["training"] = training_result
                 firebase_put(
                     FIREBASE_ADAPTIVE_URL,
                     {
