@@ -177,7 +177,7 @@ export default function LoginPage() {
       <header style={styles.header}>
         <Link href="/" style={styles.brand}>
           <span style={styles.brandIcon}>👓</span>
-          <span>Smart Spectacles</span>
+          <span>SightSync</span>
         </Link>
 
         <Link href="/" style={styles.backLink}>
@@ -376,7 +376,7 @@ export default function LoginPage() {
           <div style={styles.separator}>
             <span />
             <span style={styles.separatorText}>
-              NEW TO SMART SPECTACLES?
+              NEW TO SIGHTSYNC?
             </span>
             <span />
           </div>
@@ -395,7 +395,7 @@ export default function LoginPage() {
       </section>
 
       <footer style={styles.footer}>
-        © 2026 Smart Spectacles · Environmental awareness technology
+        © 2026 SightSync · Environmental awareness technology
       </footer>
     </main>
   );
