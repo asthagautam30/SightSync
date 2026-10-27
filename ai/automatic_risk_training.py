@@ -307,7 +307,7 @@ def update_pipeline(readings: dict, baselines: dict, eligible: bool,
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             RECORDS_PATH.write_text(
-                "".join(json.dumps(record, allow_nan=False) + "\\n" for record in records),
+                "".join(json.dumps(record, allow_nan=False) + "\n" for record in records),
                 encoding="utf-8",
             )
         except (OSError, ValueError):
