@@ -16,7 +16,7 @@ import { alertManager } from "@/lib/alert-manager";
 } from "@/lib/weekly-report-notice";
 import { useRouter } from "next/navigation";
 
-import { ref, onValue } from "firebase/database";
+import { ref, onValue, set } from "firebase/database";
 
 import { signOut } from "firebase/auth";
 
@@ -67,6 +67,15 @@ type AdaptiveSensorResult = {
 type AdaptiveFirebaseData = {
   sensors?: Partial<Record<SensorKey, AdaptiveSensorResult>>;
   updatedAt?: number;
+};
+
+type RiskTrainingSample = {
+  sampleId: string;
+  timestamp?: number;
+  readings?: Record<string, number | null>;
+  baselines?: Record<string, number | null>;
+  eligibleForRiskTraining?: boolean;
+  eligibilityReasons?: string[];
 };
 
 type RiskTrainingStatus = {
@@ -274,6 +283,11 @@ export default function DashboardPage() {
 
   const [riskTrainingStatus, setRiskTrainingStatus] =
     useState<RiskTrainingStatus | null>(null);
+  const [riskTrainingSamples, setRiskTrainingSamples] =
+    useState<RiskTrainingSample[]>([]);
+  const [reviewedRiskLabels, setReviewedRiskLabels] =
+    useState<Record<string, string>>({});
+  const [savingRiskLabel, setSavingRiskLabel] = useState("");
 
   const [adaptiveLastUpdated, setAdaptiveLastUpdated] =
   useState<number | null>(null);
@@ -466,6 +480,29 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   // Subscribe to live Firebase sensor readings.
+
+useEffect(() => {
+  const samplesRef = ref(realtimeDb, "devices/Prachi-spectacles-001/risk_training/samples");
+  const labelsRef = ref(realtimeDb, "devices/Prachi-spectacles-001/risk_training/reviewed_labels");
+  const unsubscribeSamples = onValue(samplesRef, (snapshot) => {
+    const value = snapshot.val() as Record<string, RiskTrainingSample> | null;
+    setRiskTrainingSamples(value ? Object.values(value).filter((sample) => sample?.sampleId) : []);
+  });
+  const unsubscribeLabels = onValue(labelsRef, (snapshot) => {
+    const value = snapshot.val() as Record<string, { risk?: string; reviewed?: boolean }> | null;
+    const labels: Record<string, string> = {};
+    if (value) {
+      for (const [sampleId, item] of Object.entries(value)) {
+        if (item?.reviewed === true && typeof item.risk === "string") labels[sampleId] = item.risk;
+      }
+    }
+    setReviewedRiskLabels(labels);
+  });
+  return () => {
+    unsubscribeSamples();
+    unsubscribeLabels();
+  };
+}, []);
 
 useEffect(() => {
   const trainingStatusRef = ref(
@@ -1357,6 +1394,60 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
           <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
             The classifier is experimental and is not validated for real-world safety use.
           </p>
+        </section>
+
+        <section style={sectionStyle} aria-labelledby="risk-review-title">
+          <p style={eyebrowStyle}>HUMAN REVIEW REQUIRED</p>
+          <h2 id="risk-review-title" style={sectionTitleStyle}>Review training examples</h2>
+          <p style={mutedTextStyle}>
+            Assign a risk label only when you have a trustworthy, independently reviewed outcome. Do not label a sample just by copying the app's fixed thresholds. These labels are experimental and do not replace safety warnings.
+          </p>
+          {riskTrainingSamples.filter((sample) => sample.eligibleForRiskTraining === true && !reviewedRiskLabels[sample.sampleId]).slice(-5).reverse().length === 0 ? (
+            <p style={mutedTextStyle}>No eligible samples are currently waiting for review.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+              {riskTrainingSamples.filter((sample) => sample.eligibleForRiskTraining === true && !reviewedRiskLabels[sample.sampleId]).slice(-5).reverse().map((sample) => (
+                <article key={sample.sampleId} style={{ padding: 14, border: "1px solid #203a50", borderRadius: 12, background: "#0b1729" }}>
+                  <p style={{ ...mutedTextStyle, marginTop: 0 }}>
+                    Sample {sample.sampleId.slice(0, 8)} · {sample.timestamp ? new Date(sample.timestamp).toLocaleString() : "Time unavailable"}
+                  </p>
+                  <p style={{ color: "#dce8f6", margin: "8px 0" }}>
+                    UV: {sample.readings?.uv ?? "N/A"} · Gas: {sample.readings?.gas ?? "N/A"} · Light: {sample.readings?.light ?? "N/A"} · Distance: {sample.readings?.distance ?? "N/A"}
+                  </p>
+                  <p style={{ ...mutedTextStyle, margin: "4px 0 12px" }}>
+                    Baselines — UV: {sample.baselines?.uv ?? "N/A"} · Gas: {sample.baselines?.gas ?? "N/A"} · Light: {sample.baselines?.light ?? "N/A"} · Distance: {sample.baselines?.distance ?? "N/A"}
+                  </p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(["low", "moderate", "elevated"] as const).map((risk) => (
+                      <button
+                        key={risk}
+                        type="button"
+                        disabled={savingRiskLabel === sample.sampleId}
+                        onClick={async () => {
+                          setSavingRiskLabel(sample.sampleId);
+                          try {
+                            await set(ref(realtimeDb, `devices/Prachi-spectacles-001/risk_training/reviewed_labels/${sample.sampleId}`), {
+                              risk,
+                              reviewed: true,
+                              reviewedAt: Date.now(),
+                              source: "dashboard_human_review",
+                            });
+                          } catch (error) {
+                            console.error("Could not save reviewed risk label:", error);
+                          } finally {
+                            setSavingRiskLabel("");
+                          }
+                        }}
+                        style={{ ...secondaryButtonStyle, opacity: savingRiskLabel === sample.sampleId ? 0.6 : 1 }}
+                      >
+                        {savingRiskLabel === sample.sampleId ? "Saving..." : risk[0].toUpperCase() + risk.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Live sensor readings */}
