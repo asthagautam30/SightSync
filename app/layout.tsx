@@ -15,6 +15,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try { var t = localStorage.getItem("smart-spectacles-theme"); if (["green-light","green-dark","peach-light","peach-dark","stone-light","slate-dark"].includes(t)) document.documentElement.dataset.theme = t; } catch (e) {}`,
+          }}
+        />
+      </head>
       <body>
         <ThemeProvider>
           <AuthProvider>
