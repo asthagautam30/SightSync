@@ -42,7 +42,7 @@ type AnomalyAssessment = {
   message?: string;
   trainingSamples?: number;
   trainingSamplesRequired?: number;
-  training?: { trainingStatus?: string; trainingSamples?: number; sampleAccepted?: boolean; modelTrained?: boolean; trainingRows?: number };
+  training?: { trainingStatus?: string; trainingSamples?: number; sampleAccepted?: boolean; modelTrained?: boolean; trainingRows?: number; eligible?: boolean; eligibilityReasons?: string[] };
   validatedForRealWorldUse?: boolean;
 };
 type AdaptiveFirebaseData = {
@@ -143,11 +143,27 @@ export default function AdaptiveLearningPage() {
             {typeof adaptiveData.anomalyAssessment.score === "number" && <p style={metricStyle}>Anomaly score: <strong>{adaptiveData.anomalyAssessment.score}</strong></p>}
             <p style={metricStyle}>{adaptiveData.anomalyAssessment.message ?? "Anomaly detection result unavailable."}</p>
             {adaptiveData.anomalyAssessment.training && (
-              <p style={metricStyle}>Automatic training: <strong>
-                {adaptiveData.anomalyAssessment.training.modelTrained
-                  ? `Model trained on ${adaptiveData.anomalyAssessment.training.trainingRows ?? adaptiveData.anomalyAssessment.training.trainingSamples ?? 0} eligible readings`
-                  : `${adaptiveData.anomalyAssessment.training.trainingSamples ?? adaptiveData.anomalyAssessment.trainingSamples ?? 0}/100 eligible readings collected`}
-              </strong></p>
+              <>
+                <p style={metricStyle}>Automatic training: <strong>
+                  {adaptiveData.anomalyAssessment.training.modelTrained
+                    ? `Model trained on ${adaptiveData.anomalyAssessment.training.trainingRows ?? adaptiveData.anomalyAssessment.training.trainingSamples ?? 0} eligible readings`
+                    : `${adaptiveData.anomalyAssessment.training.trainingSamples ?? adaptiveData.anomalyAssessment.trainingSamples ?? 0}/100 eligible readings collected`}
+                </strong></p>
+                {!adaptiveData.anomalyAssessment.training.modelTrained && (
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: "rgba(30, 41, 59, .55)", border: "1px solid #334155" }}>
+                    <p style={{ ...metricStyle, marginTop: 0 }}>
+                      {adaptiveData.anomalyAssessment.training.eligible
+                        ? "Current readings are eligible. Keep the device running to collect training samples."
+                        : "Training is paused until readings pass the independent safety checks and all sensor baselines are established."}
+                    </p>
+                    {(adaptiveData.anomalyAssessment.training.eligibilityReasons ?? []).length > 0 && (
+                      <ul style={{ paddingLeft: 20, margin: "6px 0", color: "#cbd5e1", fontSize: 13, lineHeight: 1.7 }}>
+                        {adaptiveData.anomalyAssessment.training.eligibilityReasons?.map((reason, index) => <li key={index}>{reason}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </>
             )}
             <p style={{ ...mutedTextStyle, fontSize: 12 }}>An anomaly is not automatically a hazard. If the model is unavailable or untrained, keep using fixed safety checks; this model is not validated for real-world safety use.</p>
           </section>
