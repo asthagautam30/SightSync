@@ -6,6 +6,7 @@ creates labels from the fixed thresholds.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import time
@@ -180,6 +181,35 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
         status["message"] = "Waiting for enough eligible, reviewed labels across at least two classes."
         return status
 
+    fingerprint_payload = [
+        {"sampleId": records_by_id, "risk": label}
+        for records_by_id, label in sorted(
+            (record.get("sampleId"), labels.get(record.get("sampleId")))
+            for record in records
+            if record.get("eligibleForRiskTraining") is True
+            and record.get("sampleId") in labels
+            and _features(record) is not None
+        )
+    ]
+    training_fingerprint = hashlib.sha256(
+        json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if MODEL_PATH.is_file():
+        try:
+            previous = joblib.load(MODEL_PATH)
+            if isinstance(previous, dict) and previous.get("training_fingerprint") == training_fingerprint:
+                status.update(
+                    trainingStatus="trained_and_evaluated",
+                    modelAvailable=True,
+                    message="The current reviewed dataset has already been trained and evaluated. Fixed safety checks remain authoritative.",
+                    evaluation=previous.get("evaluation", {}),
+                    trainingRows=previous.get("training_rows"),
+                    testRows=previous.get("test_rows"),
+                )
+                return status
+        except Exception:
+            pass
+
     X = np.asarray([row[0] for row in rows], dtype=float)
     y = np.asarray([row[1] for row in rows], dtype=str)
     try:
@@ -214,7 +244,9 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
             "training_rows": int(len(y_train)),
             "test_rows": int(len(y_test)),
             "classes": sorted(str(value) for value in candidate.classes_),
-            "evaluation": {"macro_f1": macro_f1, "balanced_accuracy": balanced},
+            "evaluation": {"macroF1": round(macro_f1, 4), "balancedAccuracy": round(balanced, 4),
+                           "macro_f1": macro_f1, "balanced_accuracy": balanced},
+            "training_fingerprint": training_fingerprint,
             "note": "Experimental; not validated for real-world safety use.",
         }, temporary)
         temporary.replace(MODEL_PATH)
