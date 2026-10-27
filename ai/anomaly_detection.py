@@ -53,7 +53,7 @@ class AnomalyDetector:
             return
         if not self.model_path.is_file():
             self.model = None
-            self.status = "model_unavailable"
+            self.status = "collecting_samples"
             return
         try:
             model = joblib.load(self.model_path)
@@ -160,7 +160,7 @@ class AnomalyDetector:
                 "status": self.status, "anomaly": None, "score": None,
                 "trainingSamples": samples,
                 "trainingSamplesRequired": MIN_TRAINING_SAMPLES,
-                "message": f"Collecting readings that pass fixed/adaptive checks ({samples}/{MIN_TRAINING_SAMPLES}); anomaly predictions are not active yet.",
+                "message": f"Model not trained yet. Collecting readings that pass fixed/adaptive safety checks ({samples}/{MIN_TRAINING_SAMPLES} eligible samples); predictions start after training.",
                 "validatedForRealWorldUse": False,
             }
         try:
