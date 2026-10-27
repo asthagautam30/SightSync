@@ -2,7 +2,6 @@
 
 import { doc, getDoc } from "firebase/firestore";
 import { getSafetyPrecaution } from "@/lib/safety-precautions";
-import RiskPredictionCard from "./risk-prediction-card";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -861,8 +860,6 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
           </div>
 
         )}
-
-        <RiskPredictionCard sensors={data} />
 
         {/* Summary cards */}
 
