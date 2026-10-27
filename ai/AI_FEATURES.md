@@ -29,6 +29,26 @@ python -m ai.risk_model --train-csv path/to/reviewed_sensor_labels.csv
 
 The command reports a held-out classification report and writes \`ai/risk_random_forest.joblib\`. Keep the artifact private if the training data is sensitive. Validate with representative, independently labelled data before relying on predictions. The artifact is intentionally not committed.
 
+## Isolation Forest anomaly detection
+
+The adaptive Firebase runner publishes \`anomalyAssessment\` beside \`riskAssessment\` in \`/adaptive.json\`. The Adaptive Learning page shows the current model status and anomaly result.
+
+- Inference uses \`ai/anomaly_detection.py\` and expects \`ai/models/isolation_forest.joblib\`.
+- No trained model is bundled. Until one is trained, the UI reports that the model is unavailable; it does not invent anomaly predictions.
+- Train with \`ai/train_isolation_forest.py\` using a CSV containing representative, reviewed normal/accepted readings with columns \`uv,gas,light,distance\`.
+- Isolation Forest is unsupervised. Its anomaly scores identify unusual patterns, not confirmed hazards. Use independent reviewed event labels to evaluate whether detections are useful.
+- Training applies feature scaling because the sensor columns have different numeric ranges. Keep the same four-column order when training and inference.
+- Fixed-limit checks and the Random Forest safety override remain independent of anomaly predictions.
+
+Example:
+
+\`\`\`bash
+python -m pip install -r ai/requirements-ml.txt
+python ai/train_isolation_forest.py --csv path/to/normal_sensor_readings.csv
+\`\`\`
+
+The resulting \`ai/models/isolation_forest.joblib\` is local and should not be committed if it contains or encodes sensitive data. Do not use synthetic readings alone to claim real-world anomaly detection accuracy.
+
 ## Weekly AI-personalized recommendations
 
 The weekly report computes aggregate statistics in the browser, then posts only the weekly summary, observations, and aggregate sensor statistics to \`/api/weekly-recommendations\`; it does not send a user ID or raw timestamped history to the language model. The server uses \`OPENAI_API_KEY\` and optional \`OPENAI_RECOMMENDATION_MODEL\` (default \`gpt-4.1-mini\`) to produce short recommendations. If the key is missing or the API fails, safety-checked fallback recommendations are used.
