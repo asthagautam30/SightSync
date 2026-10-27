@@ -5,7 +5,7 @@ import { ThemeProvider } from "./theme-provider";
 
 export const metadata: Metadata = {
   title: "SightSync",
-  description: "SightSync Environmental Safety System",
+  description: "SightSync — Visual Comfort and Environmental Awareness",
 };
 
 export default function RootLayout({
