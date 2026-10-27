@@ -125,12 +125,14 @@ def main():
             print(f"\nLatest Firebase readings ({time.strftime('%H:%M:%S')}):")
             latest_results = {}
             all_sensors_learning_eligible = True
+            learning_blockers = []
 
             for sensor in SENSOR_KEYS:
                 reading = data.get(sensor)
                 if not isinstance(reading, (int, float)) or isinstance(reading, bool):
                     print(f"  {sensor}: no valid numeric reading")
                     all_sensors_learning_eligible = False
+                    learning_blockers.append(f"{sensor}: waiting for a valid numeric reading")
                     continue
 
                 reading_value = float(reading)
@@ -140,8 +142,12 @@ def main():
                 adaptive_warning = engine.is_warning(reading_value)
 
                 # Never learn from a reading that trips fixed or current adaptive warning.
-                if fixed_warning or adaptive_warning:
+                if fixed_warning:
                     all_sensors_learning_eligible = False
+                    learning_blockers.append(f"{sensor}: reading crosses the fixed safety threshold")
+                elif adaptive_warning:
+                    all_sensors_learning_eligible = False
+                    learning_blockers.append(f"{sensor}: reading crosses the current adaptive warning threshold")
                 result = engine.observe(
                     reading_value,
                     hazardous=(fixed_warning or adaptive_warning),
@@ -158,6 +164,9 @@ def main():
                     if sensor in ("uv", "gas")
                     else reading_value < effective_threshold
                 )
+                if not result["baselineEstablished"]:
+                    learning_blockers.append(f"{sensor}: baseline not established yet")
+
                 latest_results[sensor] = {
                     **result,
                     "reading": reading,
@@ -194,6 +203,15 @@ def main():
                     ),
                 )
                 anomaly_assessment = detect_anomaly(data)
+                training_result["eligible"] = bool(
+                    all_sensors_learning_eligible
+                    and len(latest_results) == len(SENSOR_KEYS)
+                    and all(
+                        latest_results.get(sensor, {}).get("baselineEstablished") is True
+                        for sensor in SENSOR_KEYS
+                    )
+                )
+                training_result["eligibilityReasons"] = list(dict.fromkeys(learning_blockers))[:8]
                 anomaly_assessment["training"] = training_result
                 firebase_put(
                     FIREBASE_ADAPTIVE_URL,
