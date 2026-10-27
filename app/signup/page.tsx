@@ -130,7 +130,7 @@ const verificationInterval = setInterval(async () => {
       <header style={styles.header}>
         <Link href="/" style={styles.brand}>
           <span style={styles.brandIcon}>👓</span>
-          <span>Smart Spectacles</span>
+          <span>SightSync</span>
         </Link>
 
         <Link href="/" style={styles.backLink}>
@@ -152,7 +152,7 @@ const verificationInterval = setInterval(async () => {
           </h1>
 
           <p style={styles.introText}>
-            Create your Smart Spectacles account to access environmental
+            Create your SightSync account to access environmental
             monitoring, sensor history, safety alerts, and personalized
             settings.
           </p>
@@ -335,7 +335,7 @@ const verificationInterval = setInterval(async () => {
       </section>
 
       <footer style={styles.footer}>
-        © 2026 Smart Spectacles · Environmental awareness technology
+        © 2026 SightSync · Environmental awareness technology
       </footer>
     </main>
   );
