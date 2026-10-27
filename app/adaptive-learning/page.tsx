@@ -33,6 +33,7 @@ type RiskAssessment = {
   recommendations?: string[];
   modelAvailable?: boolean;
   modelPrediction?: string;
+  modelReason?: string;
   validatedForRealWorldUse?: boolean;
 };
 type AnomalyAssessment = {
@@ -173,7 +174,15 @@ export default function AdaptiveLearningPage() {
           <section style={{ ...panelStyle, marginTop: 20 }}>
             <h2 style={{ fontSize: 19, margin: "0 0 10px" }}>AI Risk & Safety Review</h2>
             <p style={metricStyle}>Assessment: <strong>{adaptiveData.riskAssessment.risk ?? "Unavailable"}</strong></p>
-            <p style={metricStyle}>Source: <strong>{adaptiveData.riskAssessment.modelAvailable ? "Random Forest + fixed safety override" : "Fixed-limit fallback (model not trained/available)"}</strong></p>
+            <p style={metricStyle}>Source: <strong>{adaptiveData.riskAssessment.modelAvailable ? "Random Forest + fixed safety override" : "Fixed-limit fallback (no usable Random Forest model)"}</strong></p>
+            {!adaptiveData.riskAssessment.modelAvailable && adaptiveData.riskAssessment.modelReason && (
+              <div style={{ margin: "10px 0", padding: 12, borderRadius: 10, background: "rgba(30, 41, 59, .55)", border: "1px solid #334155" }}>
+                <p style={{ ...metricStyle, margin: 0 }}>Why the trained model is not active: {adaptiveData.riskAssessment.modelReason}</p>
+              </div>
+            )}
+            {adaptiveData.riskAssessment.modelAvailable && adaptiveData.riskAssessment.modelPrediction && (
+              <p style={metricStyle}>Random Forest prediction: <strong>{adaptiveData.riskAssessment.modelPrediction}</strong></p>
+            )}
             <p style={metricStyle}>Triggered sensors: <strong>{adaptiveData.riskAssessment.triggeredSensors?.join(", ") || "None detected by configured limits"}</strong></p>
             <ul style={{ paddingLeft: 20, marginTop: 10, color: "#cbd5e1", fontSize: 13, lineHeight: 1.8 }}>
               {(adaptiveData.riskAssessment.recommendations ?? []).map((item, index) => <li key={index}>{item}</li>)}
