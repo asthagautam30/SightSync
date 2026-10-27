@@ -57,10 +57,12 @@ export default function AdaptiveLearningPage() {
   const router = useRouter();
   const [adaptiveData, setAdaptiveData] = useState<AdaptiveFirebaseData | null>(null);
   const [sensorData, setSensorData] = useState<SensorData | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [activeThresholds, setActiveThresholds] = useState<ThresholdValues>(getActiveThresholds());
 
   useEffect(() => {
+    // Keep the first render deterministic for Next.js prerendering.
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -142,7 +144,9 @@ export default function AdaptiveLearningPage() {
                   <p style={metricStyle}>Adaptive threshold: <strong>{adaptive ?? "—"}</strong></p>
                   <p style={metricStyle}>Effective threshold: <strong>{effective}</strong></p>
                   <p style={metricStyle}>Baseline: <strong>{sensor?.baseline ?? "—"}</strong></p>
-                  <p style={metricStyle}>Baseline progress: <strong>{sensor?.initialSamplesCollected ?? 0}/{sensor?.initialSamplesRequired ?? 60}</strong> readings</p>
+                  <p style={metricStyle}>Baseline progress: <strong>{sensor?.baselineEstablished === true
+                    ? "Complete"
+                    : `${sensor?.initialSamplesCollected ?? 0}/${sensor?.initialSamplesRequired ?? 60} readings`}</strong></p>
                   <p style={metricStyle}>Batch progress: <strong>{sensor?.batchSamplesCollected ?? 0}/{sensor?.batchSamplesRequired ?? 20}</strong> readings</p>
                   <p style={metricStyle}>Confirmed shift batches: <strong>{sensor?.consecutiveShiftBatches ?? 0}/{sensor?.shiftBatchesRequired ?? 3}</strong></p>
                   <p style={metricStyle}>Learning status: <strong>{status}</strong></p>
