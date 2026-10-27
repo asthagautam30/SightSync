@@ -35,9 +35,17 @@ type RiskAssessment = {
   modelPrediction?: string;
   validatedForRealWorldUse?: boolean;
 };
+type AnomalyAssessment = {
+  status?: string;
+  anomaly?: boolean | null;
+  score?: number | null;
+  message?: string;
+  validatedForRealWorldUse?: boolean;
+};
 type AdaptiveFirebaseData = {
   sensors?: Partial<Record<SensorKey, AdaptiveSensorResult>>;
   riskAssessment?: RiskAssessment;
+  anomalyAssessment?: AnomalyAssessment;
   updatedAt?: number;
 };
 type SensorData = Partial<Record<SensorKey, number>> & {
@@ -123,6 +131,17 @@ export default function AdaptiveLearningPage() {
             {" · "}{isFresh ? "Live adaptive results" : "Stale/unavailable — fixed thresholds only"}
           </p>
         </header>
+
+        {isFresh && adaptiveData?.anomalyAssessment && (
+          <section style={{ ...panelStyle, marginTop: 20 }}>
+            <h2 style={{ fontSize: 19, margin: "0 0 10px" }}>Isolation Forest Anomaly Detection</h2>
+            <p style={metricStyle}>Model status: <strong>{adaptiveData.anomalyAssessment.status ?? "Unavailable"}</strong></p>
+            <p style={metricStyle}>Result: <strong>{adaptiveData.anomalyAssessment.anomaly === true ? "Unusual sensor pattern detected" : adaptiveData.anomalyAssessment.anomaly === false ? "No anomaly flagged" : "Not available"}</strong></p>
+            {typeof adaptiveData.anomalyAssessment.score === "number" && <p style={metricStyle}>Anomaly score: <strong>{adaptiveData.anomalyAssessment.score}</strong></p>}
+            <p style={metricStyle}>{adaptiveData.anomalyAssessment.message ?? "Anomaly detection result unavailable."}</p>
+            <p style={{ ...mutedTextStyle, fontSize: 12 }}>An anomaly is not automatically a hazard. If the model is unavailable or untrained, keep using fixed safety checks; this model is not validated for real-world safety use.</p>
+          </section>
+        )}
 
         {isFresh && adaptiveData?.riskAssessment && (
           <section style={{ ...panelStyle, marginTop: 20 }}>
