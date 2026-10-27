@@ -156,7 +156,7 @@ const SENSOR_DETAILS: {
 
     icon: "💡",
 
-    unit: " raw test units",
+    unit: "",
 
   },
 {
@@ -1035,7 +1035,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
               >
 
-                Smart Spectacles
+                SightSync
 
               </strong>
 
@@ -1614,7 +1614,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           <Link href="/" style={footerLinkStyle}>
 
-            Smart Spectacles
+            SightSync
 
           </Link>
 
