@@ -79,12 +79,11 @@ export default function WeeklyReportPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-sky-600">
-            SMART SPECTACLES
+            SIGHTSYNC
           </p>
-          <h1 className="text-3xl font-bold">Weekly AI Report</h1>
+          <h1 className="text-3xl font-bold">Your Week with SightSync</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Sensor trends and precautions from your last seven days of saved
-            history.
+            A friendly look at your readings, important alerts, and helpful next steps from the past seven days.
           </p>
         </div>
 
@@ -133,14 +132,14 @@ export default function WeeklyReportPage() {
             </div>
 
             <div className="rounded-xl border p-4">
-              <p className="text-sm text-gray-500">Saved warning records</p>
+              <p className="text-sm text-gray-500">Warnings recorded</p>
               <p className="mt-2 text-2xl font-semibold">
                 {report.warningReadings}
               </p>
             </div>
 
             <div className="rounded-xl border p-4">
-              <p className="text-sm text-gray-500">Sensors summarized</p>
+              <p className="text-sm text-gray-500">Sensors with data</p>
               <p className="mt-2 text-2xl font-semibold">
                 {report.sensorStats.length}
               </p>
@@ -148,7 +147,7 @@ export default function WeeklyReportPage() {
           </section>
 
           <section className="rounded-xl border p-5">
-            <h2 className="text-xl font-semibold">Weekly summary</h2>
+            <h2 className="text-xl font-semibold">Your week at a glance</h2>
             <p className="mt-2">{report.summary}</p>
             <p className="mt-3 text-xs text-gray-500">
               Period: {report.periodStart} to {report.periodEnd}
@@ -156,14 +155,13 @@ export default function WeeklyReportPage() {
 
             {!report.dataAvailable && (
               <p className="mt-3 text-sm text-amber-700">
-                No usable timestamped readings were found for this period.
-                The report may be limited until more history is saved.
+                There isn’t enough saved data to give a reliable picture of this week yet. Keep your device connected and recording, then check back.
               </p>
             )}
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-semibold">Sensor statistics</h2>
+            <h2 className="text-xl font-semibold">Your readings</h2>
 
             {report.sensorStats.length === 0 ? (
               <p className="rounded-xl border p-4 text-gray-600">
@@ -234,7 +232,7 @@ export default function WeeklyReportPage() {
           </section>
 
           <section className="rounded-xl border p-5">
-            <h2 className="text-xl font-semibold">Observations</h2>
+            <h2 className="text-xl font-semibold">What we noticed</h2>
 
             {report.observations.length > 0 ? (
               <ul className="mt-3 list-disc space-y-2 pl-5">
@@ -250,7 +248,7 @@ export default function WeeklyReportPage() {
           </section>
 
           <section className="rounded-xl border p-5">
-            <h2 className="text-xl font-semibold">Suggested precautions</h2>
+            <h2 className="text-xl font-semibold">Helpful next steps</h2>
 
             {report.precautions.length > 0 ? (
               <ul className="mt-3 list-disc space-y-2 pl-5">
