@@ -288,6 +288,12 @@ export default function DashboardPage() {
   const [reviewedRiskLabels, setReviewedRiskLabels] =
     useState<Record<string, string>>({});
   const [savingRiskLabel, setSavingRiskLabel] = useState("");
+  const [riskPrediction, setRiskPrediction] = useState<{
+    risk: string;
+    probabilities?: Record<string, number>;
+  } | null>(null);
+  const [riskPredictionLoading, setRiskPredictionLoading] = useState(false);
+  const [riskPredictionError, setRiskPredictionError] = useState("");
 
   const [adaptiveLastUpdated, setAdaptiveLastUpdated] =
   useState<number | null>(null);
@@ -514,6 +520,73 @@ useEffect(() => {
   });
   return () => unsubscribe();
 }, []);
+
+useEffect(() => {
+  if (!data || [data.uv, data.gas, data.light, data.distance].some(
+    (value) => typeof value !== "number" || !Number.isFinite(value) || value < 0
+  )) {
+    setRiskPrediction(null);
+    setRiskPredictionError("");
+    setRiskPredictionLoading(false);
+    return;
+  }
+
+  const controller = new AbortController();
+  let cancelled = false;
+  const baselineFor = (key: SensorKey, reading: number) => {
+    const candidate = adaptiveData?.sensors?.[key]?.baseline;
+    return typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0
+      ? candidate
+      : reading;
+  };
+
+  async function predictRisk() {
+    setRiskPredictionLoading(true);
+    setRiskPredictionError("");
+    try {
+      const response = await fetch("/api/risk-prediction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          uv: data!.uv,
+          gas: data!.gas,
+          light: data!.light,
+          distance: data!.distance,
+          uv_baseline: baselineFor("uv", data!.uv!),
+          gas_baseline: baselineFor("gas", data!.gas!),
+          light_baseline: baselineFor("light", data!.light!),
+          distance_baseline: baselineFor("distance", data!.distance!),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error ?? "Random Forest prediction is unavailable.");
+      if (!cancelled) {
+        setRiskPrediction({
+          risk: String(result.risk),
+          probabilities: result.probabilities && typeof result.probabilities === "object"
+            ? result.probabilities as Record<string, number>
+            : {},
+        });
+        setRiskPredictionError("");
+      }
+    } catch (error) {
+      if (cancelled || (error instanceof Error && error.name === "AbortError")) return;
+      if (!cancelled) {
+        setRiskPrediction(null);
+        setRiskPredictionError(error instanceof Error ? error.message : "Random Forest prediction is unavailable.");
+      }
+    } finally {
+      if (!cancelled) setRiskPredictionLoading(false);
+    }
+  }
+
+  void predictRisk();
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
+}, [data?.uv, data?.gas, data?.light, data?.distance, adaptiveData]);
 
 useEffect(() => {
   const adaptiveRef = ref(
@@ -1361,92 +1434,42 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
         </section>
 
-        {/* AI/ML training readiness — informational only, never a safety control */}
-        <section style={sectionStyle} aria-labelledby="risk-training-title">
-          <p style={eyebrowStyle}>AI / ML STATUS</p>
-          <h2 id="risk-training-title" style={sectionTitleStyle}>Risk model training</h2>
+        {/* Existing trained Random Forest inference; fixed sensor alerts remain independent. */}
+        <section style={sectionStyle} aria-labelledby="risk-prediction-title">
+          <p style={eyebrowStyle}>AI / ML PREDICTION</p>
+          <h2 id="risk-prediction-title" style={sectionTitleStyle}>Random Forest risk estimate</h2>
           <p style={mutedTextStyle}>
-            Sensor samples are collected automatically. Only reviewed risk labels can train the Random Forest; fixed safety checks remain active regardless of model status.
+            Predictions use the saved experimental model. They are informational only and do not replace sensor alerts or establish that the environment is safe.
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginTop: 16 }}>
-            {[
-              { label: "Collected records", value: riskTrainingStatus?.collectedRecords ?? 0 },
-              { label: "Eligible records", value: riskTrainingStatus?.eligibleRecords ?? 0 },
-              { label: "Reviewed labels", value: riskTrainingStatus?.eligibleReviewedLabelCount ?? 0 },
-            ].map((item) => (
-              <div key={item.label} style={{ padding: 14, borderRadius: 12, border: "1px solid #203a50", background: "#0b1729" }}>
-                <p style={{ ...mutedTextStyle, margin: 0 }}>{item.label}</p>
-                <strong style={{ display: "block", marginTop: 6, fontSize: 24, color: "#67e8f9" }}>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-          <p style={{ margin: "14px 0 4px", color: "#dce8f6" }}>
-            Status: <strong>{riskTrainingStatus?.trainingStatus?.replaceAll("_", " ") ?? "Waiting for AI runner"}</strong>
-          </p>
-          <p style={mutedTextStyle}>
-            {riskTrainingStatus?.message ?? "Training status will appear after the Python adaptive runner publishes its first update."}
-          </p>
-          {riskTrainingStatus?.evaluation && (
-            <p style={mutedTextStyle}>
-              Latest evaluation — Macro F1: {riskTrainingStatus.evaluation.macroF1 ?? "N/A"}; balanced accuracy: {riskTrainingStatus.evaluation.balancedAccuracy ?? "N/A"}.
-            </p>
-          )}
-          <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
-            The classifier is experimental and is not validated for real-world safety use.
-          </p>
-        </section>
-
-        <section style={sectionStyle} aria-labelledby="risk-review-title">
-          <p style={eyebrowStyle}>HUMAN REVIEW REQUIRED</p>
-          <h2 id="risk-review-title" style={sectionTitleStyle}>Review training examples</h2>
-          <p style={mutedTextStyle}>
-            Assign a risk label only when you have a trustworthy, independently reviewed outcome. Do not label a sample just by copying the app's fixed thresholds. These labels are experimental and do not replace safety warnings.
-          </p>
-          {riskTrainingSamples.filter((sample) => sample.eligibleForRiskTraining === true && !reviewedRiskLabels[sample.sampleId]).slice(-5).reverse().length === 0 ? (
-            <p style={mutedTextStyle}>No eligible samples are currently waiting for review.</p>
+          {!data || [data.uv, data.gas, data.light, data.distance].some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0) ? (
+            <p style={mutedTextStyle}>Waiting for complete live sensor readings.</p>
+          ) : riskPredictionLoading ? (
+            <p style={mutedTextStyle}>Calculating risk estimate…</p>
+          ) : riskPredictionError ? (
+            <p role="status" style={mutedTextStyle}>{riskPredictionError}</p>
+          ) : riskPrediction ? (
+            <>
+              <p style={{ color: "#dce8f6", fontSize: 20, fontWeight: 700, margin: "12px 0" }}>
+                Predicted risk: {riskPrediction.risk}
+              </p>
+              {Object.keys(riskPrediction.probabilities ?? {}).length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+                  {Object.entries(riskPrediction.probabilities ?? {}).map(([label, probability]) => (
+                    <div key={label} style={{ padding: 12, borderRadius: 12, border: "1px solid #203a50", background: "#0b1729" }}>
+                      <p style={{ ...mutedTextStyle, margin: 0 }}>{label}</p>
+                      <strong style={{ display: "block", marginTop: 6, color: "#67e8f9" }}>
+                        {(probability * 100).toFixed(1)}%
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p style={{ ...mutedTextStyle, marginBottom: 0 }}>
+                Experimental prediction only; model outputs have not been validated for real-world safety use.
+              </p>
+            </>
           ) : (
-            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-              {riskTrainingSamples.filter((sample) => sample.eligibleForRiskTraining === true && !reviewedRiskLabels[sample.sampleId]).slice(-5).reverse().map((sample) => (
-                <article key={sample.sampleId} style={{ padding: 14, border: "1px solid #203a50", borderRadius: 12, background: "#0b1729" }}>
-                  <p style={{ ...mutedTextStyle, marginTop: 0 }}>
-                    Sample {sample.sampleId.slice(0, 8)} · {sample.timestamp ? new Date(sample.timestamp).toLocaleString() : "Time unavailable"}
-                  </p>
-                  <p style={{ color: "#dce8f6", margin: "8px 0" }}>
-                    UV: {sample.readings?.uv ?? "N/A"} · Gas: {sample.readings?.gas ?? "N/A"} · Light: {sample.readings?.light ?? "N/A"} · Distance: {sample.readings?.distance ?? "N/A"}
-                  </p>
-                  <p style={{ ...mutedTextStyle, margin: "4px 0 12px" }}>
-                    Baselines — UV: {sample.baselines?.uv ?? "N/A"} · Gas: {sample.baselines?.gas ?? "N/A"} · Light: {sample.baselines?.light ?? "N/A"} · Distance: {sample.baselines?.distance ?? "N/A"}
-                  </p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {(["low", "moderate", "elevated"] as const).map((risk) => (
-                      <button
-                        key={risk}
-                        type="button"
-                        disabled={savingRiskLabel === sample.sampleId}
-                        onClick={async () => {
-                          setSavingRiskLabel(sample.sampleId);
-                          try {
-                            await set(ref(realtimeDb, `devices/Prachi-spectacles-001/risk_training/reviewed_labels/${sample.sampleId}`), {
-                              risk,
-                              reviewed: true,
-                              reviewedAt: Date.now(),
-                              source: "dashboard_human_review",
-                            });
-                          } catch (error) {
-                            console.error("Could not save reviewed risk label:", error);
-                          } finally {
-                            setSavingRiskLabel("");
-                          }
-                        }}
-                        style={{ ...secondaryButtonStyle, opacity: savingRiskLabel === sample.sampleId ? 0.6 : 1 }}
-                      >
-                        {savingRiskLabel === sample.sampleId ? "Saving..." : risk[0].toUpperCase() + risk.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
+            <p style={mutedTextStyle}>No prediction is available yet.</p>
           )}
         </section>
 
