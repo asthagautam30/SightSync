@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   };
 
   try {
-    const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-2.5-flash";
+    const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-3.8-flash";
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: {
