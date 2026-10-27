@@ -31,23 +31,24 @@ The command reports a held-out classification report and writes \`ai/risk_random
 
 ## Isolation Forest anomaly detection
 
-The adaptive Firebase runner publishes \`anomalyAssessment\` beside \`riskAssessment\` in \`/adaptive.json\`. The Adaptive Learning page shows the current model status and anomaly result.
+The adaptive Firebase runner publishes \`anomalyAssessment\` beside \`riskAssessment\` in \`/adaptive.json\`. The Adaptive Learning page shows the model status and automatic training progress.
 
-- Inference uses \`ai/anomaly_detection.py\` and expects \`ai/models/isolation_forest.joblib\`.
-- No trained model is bundled. Until one is trained, the UI reports that the model is unavailable; it does not invent anomaly predictions.
-- Train with \`ai/train_isolation_forest.py\` using a CSV containing representative, reviewed normal/accepted readings with columns \`uv,gas,light,distance\`.
-- Isolation Forest is unsupervised. Its anomaly scores identify unusual patterns, not confirmed hazards. Use independent reviewed event labels to evaluate whether detections are useful.
-- Training applies feature scaling because the sensor columns have different numeric ranges. Keep the same four-column order when training and inference.
-- Fixed-limit checks and the Random Forest safety override remain independent of anomaly predictions.
+- No manually prepared CSV is needed for the integrated automatic-learning path.
+- The runner collects a multivariate sample only when all four sensor readings are present, every sensor's baseline has been established, and the current readings pass the independent fixed and adaptive warning checks.
+- After 100 eligible samples, the runner trains Isolation Forest locally. It retrains after each additional 25 eligible samples, up to a rolling cap of 2,000 samples.
+- Samples and the model are stored locally under \`ai/models/\`; these generated files are git-ignored.
+- If optional ML dependencies are missing, the runner remains available and reports that anomaly inference is unavailable. Install \`ai/requirements-ml.txt\` to enable training.
+- Isolation Forest is unsupervised. Its outputs identify unusual patterns, not confirmed hazards. A new environment or sensor fault can also look unusual. Fixed safety checks remain independent and authoritative.
+- Initial model performance is not validated for real-world use. Inspect false positives/negatives against reviewed events before relying on it.
 
-Example:
+The standalone trainer is also available for users who already have curated normal readings:
 
 \`\`\`bash
 python -m pip install -r ai/requirements-ml.txt
 python ai/train_isolation_forest.py --csv path/to/normal_sensor_readings.csv
 \`\`\`
 
-The resulting \`ai/models/isolation_forest.joblib\` is local and should not be committed if it contains or encodes sensitive data. Do not use synthetic readings alone to claim real-world anomaly detection accuracy.
+The live runner does not require this manual command; it trains after collecting enough eligible real readings.
 
 ## Weekly AI-personalized recommendations
 
