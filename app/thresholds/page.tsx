@@ -35,6 +35,7 @@ const SENSOR_NAMES: Record<SensorKey, string> = {
   uv: "UV Rays",
   gas: "Gas Level",
   light: "Light Intensity",
+  distance: "Distance",
 };
 
 const SENSOR_RANGES: Record<
