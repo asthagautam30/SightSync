@@ -40,6 +40,9 @@ type AnomalyAssessment = {
   anomaly?: boolean | null;
   score?: number | null;
   message?: string;
+  trainingSamples?: number;
+  trainingSamplesRequired?: number;
+  training?: { trainingStatus?: string; trainingSamples?: number; sampleAccepted?: boolean; modelTrained?: boolean; trainingRows?: number };
   validatedForRealWorldUse?: boolean;
 };
 type AdaptiveFirebaseData = {
@@ -139,6 +142,13 @@ export default function AdaptiveLearningPage() {
             <p style={metricStyle}>Result: <strong>{adaptiveData.anomalyAssessment.anomaly === true ? "Unusual sensor pattern detected" : adaptiveData.anomalyAssessment.anomaly === false ? "No anomaly flagged" : "Not available"}</strong></p>
             {typeof adaptiveData.anomalyAssessment.score === "number" && <p style={metricStyle}>Anomaly score: <strong>{adaptiveData.anomalyAssessment.score}</strong></p>}
             <p style={metricStyle}>{adaptiveData.anomalyAssessment.message ?? "Anomaly detection result unavailable."}</p>
+            {adaptiveData.anomalyAssessment.training && (
+              <p style={metricStyle}>Automatic training: <strong>
+                {adaptiveData.anomalyAssessment.training.modelTrained
+                  ? `Model trained on ${adaptiveData.anomalyAssessment.training.trainingRows ?? adaptiveData.anomalyAssessment.training.trainingSamples ?? 0} eligible readings`
+                  : `${adaptiveData.anomalyAssessment.training.trainingSamples ?? adaptiveData.anomalyAssessment.trainingSamples ?? 0}/100 eligible readings collected`}
+              </strong></p>
+            )}
             <p style={{ ...mutedTextStyle, fontSize: 12 }}>An anomaly is not automatically a hazard. If the model is unavailable or untrained, keep using fixed safety checks; this model is not validated for real-world safety use.</p>
           </section>
         )}
