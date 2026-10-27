@@ -52,9 +52,9 @@ The live runner does not require this manual command; it trains after collecting
 
 ## Weekly AI-personalized recommendations
 
-The weekly report computes aggregate statistics in the browser, then posts only the weekly summary, observations, and aggregate sensor statistics to \`/api/weekly-recommendations\`; it does not send a user ID or raw timestamped history to the language model. The server uses \`OPENAI_API_KEY\` and optional \`OPENAI_RECOMMENDATION_MODEL\` (default \`gpt-4.1-mini\`) to produce short recommendations. If the key is missing or the API fails, safety-checked fallback recommendations are used.
+The weekly report computes aggregate statistics in the browser, then posts only the weekly summary, observations, and aggregate sensor statistics to \`/api/weekly-recommendations\`; it does not send a user ID or raw timestamped history to the language model. The server uses \`GEMINI_API_KEY\` and optional \`GEMINI_RECOMMENDATION_MODEL\` (default \`gemini-2.5-flash\`) to call the Google Gemini API and produce short recommendations. The selected model's free-tier availability and request limits depend on Google's current pricing and rate limits. If the key is missing or the API fails, safety-checked fallback recommendations are used.
 
-Configure \`OPENAI_API_KEY\` only in the server environment (for local development, put it in an untracked \`.env.local\`). Never prefix it with \`NEXT_PUBLIC_\` or expose it in client code. Model-generated recommendations are informational and cannot change thresholds or suppress live alerts.
+Create a Gemini API key in Google AI Studio and configure \`GEMINI_API_KEY\` only in the server environment (for local development, put it in an untracked \`.env.local\`). Never prefix it with \`NEXT_PUBLIC_\` or expose it in client code. Model-generated recommendations are informational and cannot change thresholds or suppress live alerts.
 
 ## Tests
 
