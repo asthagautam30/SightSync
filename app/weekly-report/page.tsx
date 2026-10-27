@@ -263,6 +263,12 @@ export default function WeeklyReportPage() {
               </p>
             )}
 
+            {report.recommendationNote && (
+              <p className="mt-3 text-xs text-gray-500">
+                Recommendation source: {report.recommendationSource === "openai_aggregate_personalization" ? "AI-personalized from weekly summaries" : "Safety-checked fallback"}. {report.recommendationNote}
+              </p>
+            )}
+
             <p className="mt-4 text-xs text-gray-500">
               This is a helpful overview of saved device readings, not a medical diagnosis or a guarantee that an environment is safe. Sensor values may not match calibrated real-world measurements. Historical visual-comfort trends are not shown unless they are saved in sensor history.
             </p>
