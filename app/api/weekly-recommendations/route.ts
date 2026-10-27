@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 // Lightweight per-process throttling; deployments should also configure platform-level rate limits.
 const requestWindows = new Map<string, { start: number; count: number }>();
