@@ -49,5 +49,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Test adaptive learning and persistence
-        run: python -m unittest ai.test_adaptive_thresholds -v
+      - name: Install Python ML test dependencies
+        run: python -m pip install -r ai/requirements-ml.txt
+      - name: Test adaptive learning, risk fallback, and anomaly detection
+        run: python -m unittest ai.test_adaptive_thresholds ai.test_risk_model ai.test_anomaly_detection -v
