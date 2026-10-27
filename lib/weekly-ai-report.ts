@@ -45,6 +45,8 @@ export type WeeklyAIReport = {
   observations: string[];
   precautions: string[];
   sensorStats: WeeklySensorStat[];
+  recommendationSource?: string;
+  recommendationNote?: string;
 };
 
 const SENSORS: {
@@ -242,7 +244,46 @@ export async function generateWeeklyAIReport(
     }
   }
 
+  let recommendationSource = "personalized_rule_fallback";
+  let recommendationNote = "Showing safety-checked recommendations based on available sensor summaries.";
+  if (readings.length > 0) {
+    try {
+      const response = await fetch("/api/weekly-recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          totalReadings: readings.length,
+          warningReadings,
+          observations: observations.slice(0, 12),
+          sensorStats,
+          fallbackPrecautions: precautions,
+        }),
+      });
+      if (response.ok) {
+        const generated = await response.json() as {
+          recommendations?: unknown;
+          source?: string;
+          note?: string;
+        };
+        if (Array.isArray(generated.recommendations)) {
+          const safeRecommendations = generated.recommendations.filter(
+            (item): item is string => typeof item === "string" && item.trim().length > 0
+          ).slice(0, 8);
+          if (safeRecommendations.length > 0) {
+            precautions.splice(0, precautions.length, ...safeRecommendations);
+            recommendationSource = generated.source ?? recommendationSource;
+            recommendationNote = generated.note ?? recommendationNote;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Weekly recommendation service unavailable; using fallback.", error);
+    }
+  }
+
   return {
+    recommendationSource,
+    recommendationNote,
     generatedAt: now.toISOString(),
     periodStart: periodStart.toISOString(),
     periodEnd: now.toISOString(),
