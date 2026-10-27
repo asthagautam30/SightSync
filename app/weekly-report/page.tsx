@@ -125,21 +125,21 @@ export default function WeeklyReportPage() {
         <>
           <section className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl border p-4">
-              <p className="text-sm text-gray-500">Saved readings</p>
+              <p className="text-sm text-gray-500">Readings saved</p>
               <p className="mt-2 text-2xl font-semibold">
                 {report.totalReadings}
               </p>
             </div>
 
             <div className="rounded-xl border p-4">
-              <p className="text-sm text-gray-500">Warnings recorded</p>
+              <p className="text-sm text-gray-500">Warnings saved this week</p>
               <p className="mt-2 text-2xl font-semibold">
                 {report.warningReadings}
               </p>
             </div>
 
             <div className="rounded-xl border p-4">
-              <p className="text-sm text-gray-500">Sensors with data</p>
+              <p className="text-sm text-gray-500">Sensor types with readings</p>
               <p className="mt-2 text-2xl font-semibold">
                 {report.sensorStats.length}
               </p>
@@ -162,6 +162,7 @@ export default function WeeklyReportPage() {
 
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">Your readings</h2>
+            <p className="text-sm text-gray-600">These numbers help you compare readings over time. They are device readings, not necessarily real-world calibrated measurements.</p>
 
             {report.sensorStats.length === 0 ? (
               <p className="rounded-xl border p-4 text-gray-600">
@@ -188,14 +189,14 @@ export default function WeeklyReportPage() {
                       </div>
 
                       <div>
-                        <p className="text-gray-500">Minimum</p>
+                        <p className="text-gray-500">Lowest</p>
                         <p className="font-semibold">
                           {formatNumber(sensor.minimum)}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-gray-500">Maximum</p>
+                        <p className="text-gray-500">Highest</p>
                         <p className="font-semibold">
                           {formatNumber(sensor.maximum)}
                         </p>
@@ -242,7 +243,7 @@ export default function WeeklyReportPage() {
               </ul>
             ) : (
               <p className="mt-2 text-gray-600">
-                No additional observations are available yet.
+                There are no extra patterns to highlight yet. Keep recording readings to build a clearer picture over time.
               </p>
             )}
           </section>
@@ -258,14 +259,12 @@ export default function WeeklyReportPage() {
               </ul>
             ) : (
               <p className="mt-2 text-gray-600">
-                No additional precautions are available yet.
+                No extra suggestions are available yet. Check back after more readings have been saved.
               </p>
             )}
 
             <p className="mt-4 text-xs text-gray-500">
-              This report summarizes saved sensor data. It is not a medical
-              diagnosis, and sensor units are not necessarily calibrated
-              real-world measurements.
+              This is a helpful overview of saved device readings, not a medical diagnosis or a guarantee that an environment is safe. Sensor values may not match calibrated real-world measurements. Historical visual-comfort trends are not shown unless they are saved in sensor history.
             </p>
           </section>
         </>
