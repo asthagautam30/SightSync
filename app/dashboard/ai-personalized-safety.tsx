@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SafetyPrecaution, SafetyProfile } from "@/lib/safety-precautions";
 
 type Tip = { sensor: string; tip: string };
@@ -18,7 +18,7 @@ export default function AiPersonalizedSafety({
   const [tips, setTips] = useState<Tip[]>([]);
   const [source, setSource] = useState("loading");
   const [note, setNote] = useState("");
-  const requestBody = useMemo(() => JSON.stringify({
+  const requestBody = JSON.stringify({
     precautions: precautions.map((p) => ({
       sensor: p.sensor,
       title: p.title,
@@ -32,7 +32,7 @@ export default function AiPersonalizedSafety({
       environment: profile.environment,
       warningSensitivity: profile.warningSensitivity,
     } : null,
-  }), [precautions, profile]);
+  });
 
   useEffect(() => {
     let cancelled = false;
