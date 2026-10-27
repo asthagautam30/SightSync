@@ -15,12 +15,14 @@ try:
     from adaptive_state import export_engine_state, restore_engine_state
     from risk_model import assess_risk
     from anomaly_detection import detect_anomaly, observe_normal_reading
+    from automatic_risk_training import update_pipeline as update_risk_training_pipeline
 except ModuleNotFoundError:
     # Also works when imported from the repository root for diagnostics/tests.
     from ai.adaptive_thresholds import create_engines
     from ai.adaptive_state import export_engine_state, restore_engine_state
     from ai.risk_model import assess_risk
     from ai.anomaly_detection import detect_anomaly, observe_normal_reading
+    from ai.automatic_risk_training import update_pipeline as update_risk_training_pipeline
 
 FIREBASE_BASE = (
     "https://smart-spectacle-47402-default-rtdb.firebaseio.com/"
@@ -202,7 +204,31 @@ def main():
                         )
                     ),
                 )
+                risk_training_status = update_risk_training_pipeline(
+                    data,
+                    baselines,
+                    eligible=(
+                        all_sensors_learning_eligible
+                        and len(latest_results) == len(SENSOR_KEYS)
+                        and all(
+                            latest_results.get(sensor, {}).get("baselineEstablished") is True
+                            for sensor in SENSOR_KEYS
+                        )
+                    ),
+                    exclusion_reasons=list(dict.fromkeys(learning_blockers)),
+                )
+                risk_assessment["trainingStatus"] = {
+                    "trainingStatus": risk_training_status.get("trainingStatus"),
+                    "collectedRecords": risk_training_status.get("collectedRecords", 0),
+                    "eligibleRecords": risk_training_status.get("eligibleRecords", 0),
+                    "reviewedLabelCount": risk_training_status.get("reviewedLabelCount", 0),
+                    "eligibleReviewedLabelCount": risk_training_status.get("eligibleReviewedLabelCount", 0),
+                    "modelAvailable": risk_training_status.get("modelAvailable", False),
+                    "message": risk_training_status.get("message", ""),
+                    "validatedForRealWorldUse": False,
+                }
                 anomaly_assessment = detect_anomaly(data)
+                anomaly_assessment["riskModelTraining"] = risk_training_status
                 training_result["eligible"] = bool(
                     all_sensors_learning_eligible
                     and len(latest_results) == len(SENSOR_KEYS)
