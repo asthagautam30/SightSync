@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       }),
       signal: AbortSignal.timeout(12000),
     });
-    if (!response.ok) throw new Error(\`OpenAI API returned HTTP \${response.status}\`);
+    if (!response.ok) throw new Error(`OpenAI API returned HTTP ${response.status}`);
     const payload = await response.json() as {
       choices?: { message?: { content?: string } }[];
     };
