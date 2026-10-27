@@ -170,11 +170,16 @@ def train_from_csv(csv_path: str, output_path: str | None = None) -> dict:
         raise ValueError("CSV is missing required columns: " + ", ".join(missing))
     frame = frame[FEATURE_ORDER + ["risk"]].dropna()
     frame = frame[frame["risk"].astype(str).str.lower().isin(["low", "moderate", "elevated"])]
-    if len(frame) < 30 or frame["risk"].nunique() < 2:
-        raise ValueError("Need at least 30 labelled rows and at least two risk classes.")
+    expected_classes = {"low", "moderate", "elevated"}
     counts = frame["risk"].value_counts()
-    if counts.min() < 2:
-        raise ValueError("Each risk class needs at least two rows for a stratified split.")
+    if len(frame) < 30 or set(counts.index) != expected_classes:
+        raise ValueError(
+            "Need at least 30 complete labelled rows and all three classes: low, moderate, elevated."
+        )
+    if any(int(counts.get(label, 0)) < 8 for label in expected_classes):
+        raise ValueError(
+            "Need at least 8 labelled examples in each class: low, moderate, elevated."
+        )
 
     X = frame[FEATURE_ORDER].astype(float)
     y = frame["risk"].astype(str).str.lower()
