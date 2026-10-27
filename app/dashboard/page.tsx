@@ -1250,21 +1250,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
           <div>
 
-            <p style={eyebrowStyle}>VISUAL COMFORT OVERVIEW</p>
-
-            <h1 style={heroTitleStyle}>
-
-              Visual Comfort
-
-              <br />
-
-              <span style={{ color: "#67e8f9" }}>
-
-                Dashboard
-
-              </span>
-
-            </h1>
+            <h1 style={heroTitleStyle}>Dashboard</h1>
 
             <p style={mutedTextStyle}>
 
