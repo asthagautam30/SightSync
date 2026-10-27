@@ -178,8 +178,8 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
         status.update(trainingStatus="dependencies_missing",
                       message="Install ai/requirements-ml.txt for model training.")
         return status
-    if len(rows) < MIN_ROWS or len(counts) < 2 or any(counts[label] < MIN_PER_CLASS for label in counts):
-        status["message"] = "Waiting for enough eligible, reviewed labels across at least two classes."
+    if len(rows) < MIN_ROWS or any(counts.get(label, 0) < MIN_PER_CLASS for label in LABELS):
+        status["message"] = "Waiting for at least 30 eligible reviewed examples, including 8 examples in each of low, moderate, and elevated classes."
         return status
 
     fingerprint_payload = [
@@ -235,7 +235,7 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
         status["testRows"] = int(len(y_test))
         if macro_f1 < MIN_MACRO_F1 or balanced < MIN_BALANCED_ACCURACY:
             status.update(trainingStatus="evaluation_failed",
-                          message="Candidate failed held-out evaluation; the existing fallback remains active.")
+                          message="Candidate failed held-out evaluation; no new model was promoted. Fixed safety checks remain authoritative.")
             return status
 
         temporary = MODEL_PATH.with_suffix(".candidate.joblib")
