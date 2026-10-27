@@ -103,7 +103,9 @@ def assess_risk(readings: dict, baselines: dict | None = None) -> dict:
         values.append(reading)
     for key in SENSOR_KEYS:
         baseline = _number(baseline_values.get(key))
-        values.append(baseline if baseline is not None else 0.0)
+        if baseline is None:
+            return {**fallback, "riskSource": "fixed_limit_fallback_baseline_not_ready"}
+        values.append(baseline)
 
     try:
         predicted = str(model.predict([values])[0]).lower()
