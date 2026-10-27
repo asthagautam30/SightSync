@@ -7,12 +7,12 @@ from ai.anomaly_detection import AnomalyDetector
 
 
 class IsolationForestTests(unittest.TestCase):
-    def test_missing_model_is_explicitly_unavailable(self):
+    def test_missing_model_reports_sample_collection_state(self):
         with tempfile.TemporaryDirectory() as directory:
             detector = AnomalyDetector(Path(directory) / "missing.joblib", Path(directory) / "samples.json")
             result = detector.predict({"uv": 100, "gas": 100, "light": 100, "distance": 100})
         self.assertIsNone(result["anomaly"])
-        self.assertEqual(result["status"], "model_unavailable")
+        self.assertEqual(result["status"], "collecting_samples")
         self.assertEqual(result["trainingSamplesRequired"], 100)
 
     def test_invalid_sensor_values_are_rejected(self):
