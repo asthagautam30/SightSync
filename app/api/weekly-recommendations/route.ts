@@ -76,12 +76,12 @@ export async function POST(request: Request) {
     ...fallbackAdvice(input),
   ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 8);
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
       recommendations: fallback,
       source: "personalized_rule_fallback",
-      note: "Set OPENAI_API_KEY on the server to enable AI-written recommendations.",
+      note: "Set GEMINI_API_KEY on the server to enable AI-written recommendations.",
     });
   }
 
@@ -107,42 +107,51 @@ export async function POST(request: Request) {
   };
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const model = process.env.GEMINI_RECOMMENDATION_MODEL || "gemini-2.5-flash";
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_RECOMMENDATION_MODEL || "gpt-4.1-mini",
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You write cautious, practical weekly recommendations for an experimental smart-spectacles sensor app. Use only the supplied aggregate statistics. Do not diagnose, claim the environment is safe, infer medical conditions, invent calibrated units, or change safety thresholds. Sensor values are uncalibrated project units except distance in cm. If gas may indicate a dangerous release, advise leaving the area and contacting local emergency services. Return JSON only: {\"recommendations\":[\"...\" ]}, with 3-6 short actionable recommendations, no more than 240 characters each. State uncertainty when evidence is limited.",
-          },
-          { role: "user", content: JSON.stringify(aggregate) },
-        ],
+        systemInstruction: {
+          parts: [{
+            text: "You write cautious, practical weekly recommendations for an experimental smart-spectacles sensor app. Use only the supplied aggregate statistics. Do not diagnose, claim the environment is safe, infer medical conditions, invent calibrated units, or change safety thresholds. Sensor values are uncalibrated project units except distance in cm. If gas may indicate a dangerous release, advise leaving the area and contacting local emergency services. Return JSON only with this shape: {\\"recommendations\\":[\\"...\\"]}, with 3-6 short actionable recommendations, no more than 240 characters each. State uncertainty when evidence is limited.",
+          }],
+        },
+        contents: [{
+          role: "user",
+          parts: [{ text: JSON.stringify(aggregate) }],
+        }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+        },
       }),
       signal: AbortSignal.timeout(12000),
     });
-    if (!response.ok) throw new Error(`OpenAI API returned HTTP ${response.status}`);
+    if (!response.ok) {
+      const details = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(`Gemini API returned HTTP ${response.status}${details?.error?.message ? `: ${details.error.message.slice(0, 200)}` : ""}`);
+    }
     const payload = await response.json() as {
-      choices?: { message?: { content?: string } }[];
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Empty model response");
-    const parsed = JSON.parse(content) as { recommendations?: unknown };
+    const contentText = payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("");
+    if (!contentText) throw new Error("Empty Gemini response");
+    const parsed = JSON.parse(contentText) as { recommendations?: unknown };
     const recommendations = safeStrings(parsed.recommendations, 6, 240);
     if (recommendations.length < 1) throw new Error("No valid recommendations returned");
     return NextResponse.json({
       recommendations,
-      source: "openai_aggregate_personalization",
+      source: "gemini_aggregate_personalization",
       note: "AI-written suggestions are informational and do not replace fixed alerts or emergency guidance.",
     });
   } catch (error) {
-    console.error("AI weekly recommendations unavailable; using fallback.", error);
+    console.error("Gemini weekly recommendations unavailable; using fallback.", error);
     return NextResponse.json({
       recommendations: fallback,
       source: "personalized_rule_fallback",
