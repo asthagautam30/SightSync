@@ -4,8 +4,8 @@ import { AuthProvider } from "./auth-provider";
 import { ThemeProvider } from "./theme-provider";
 
 export const metadata: Metadata = {
-  title: "Smart Spectacles",
-  description: "Smart Spectacles Environmental Safety System",
+  title: "SightSync",
+  description: "SightSync Environmental Safety System",
 };
 
 export default function RootLayout({
