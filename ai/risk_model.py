@@ -156,7 +156,7 @@ def train_from_csv(csv_path: str, output_path: str | None = None) -> dict:
         import joblib
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.model_selection import train_test_split
-        from sklearn.metrics import classification_report
+        from sklearn.metrics import balanced_accuracy_score, classification_report, f1_score
     except ImportError as exc:
         raise RuntimeError(
             "Training requires pandas, scikit-learn, and joblib. "
@@ -188,19 +188,48 @@ def train_from_csv(csv_path: str, output_path: str | None = None) -> dict:
     model.fit(X_train, y_train)
     predictions = model.predict(X_test)
     report = classification_report(y_test, predictions, output_dict=True, zero_division=0)
+    macro_f1 = float(f1_score(y_test, predictions, average="macro", zero_division=0))
+    balanced_accuracy = float(balanced_accuracy_score(y_test, predictions))
+    evaluation = {
+        "macroF1": round(macro_f1, 4),
+        "balancedAccuracy": round(balanced_accuracy, 4),
+        "macro_f1": round(macro_f1, 4),
+        "balanced_accuracy": round(balanced_accuracy, 4),
+        "report": report,
+    }
+    if macro_f1 < 0.65 or balanced_accuracy < 0.65:
+        raise ValueError(
+            "Dataset did not pass held-out evaluation (macro F1 and balanced accuracy must both be >= 0.65). "
+            f"Observed macro F1={macro_f1:.3f}, balanced accuracy={balanced_accuracy:.3f}. "
+            "No model was saved."
+        )
+
     destination = Path(output_path) if output_path else MODEL_PATH
     destination.parent.mkdir(parents=True, exist_ok=True)
     import joblib
-    joblib.dump({
+    payload = {
         "model": model,
         "feature_order": FEATURE_ORDER,
-        "training_rows": int(len(frame)),
+        "training_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
         "classes": sorted(str(value) for value in model.classes_),
+        "evaluation": evaluation,
         "note": "Experimental; not validated for real-world safety use.",
-    }, destination)
-    return {"model_path": str(destination), "training_rows": len(frame),
-            "test_rows": len(X_test), "report": report}
+    }
+    temporary = destination.with_suffix(destination.suffix + ".candidate")
+    joblib.dump(payload, temporary)
+    temporary.replace(destination)
+    return {
+        "model_path": str(destination),
+        "training_rows": int(len(X_train)),
+        "test_rows": int(len(X_test)),
+        "evaluation": {
+            "macroF1": round(macro_f1, 4),
+            "balancedAccuracy": round(balanced_accuracy, 4),
+        },
+        "report": report,
+        "validatedForRealWorldUse": False,
+    }
 
 
 if __name__ == "__main__":
