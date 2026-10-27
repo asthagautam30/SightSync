@@ -1116,7 +1116,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
             <h1 style={heroTitleStyle}>
 
-              Environmental Safety
+              Visual Comfort
 
               <br />
 
@@ -1130,9 +1130,7 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
 
             <p style={mutedTextStyle}>
 
-              Monitor sensor readings, review warnings, and track
-
-              your environment.
+              Check your current visual-comfort assessment and relevant environmental warnings.
 
             </p>
 
@@ -1389,9 +1387,11 @@ const safetyPrecautions = SENSOR_DETAILS.flatMap((sensor) => {
                 {!data?.ai ? "Waiting for AI" : data.ai.warning ? "Warning" : "Normal"}
               </p>
               <p style={summaryDetailStyle}>
-                {data?.ai?.warning
-                  ? "Please take a break from close or prolonged viewing."
-                  : "No Visual Comfort warning reported by AI."}
+                {!data?.ai
+                  ? "Waiting for the visual-comfort assessment."
+                  : data.ai.warning
+                    ? "Please take a break from close or prolonged viewing."
+                    : "No Visual Comfort warning reported by AI."}
               </p>
               <p style={summaryDetailStyle}>
                 Detected object: {data?.ai?.object || "None"}
