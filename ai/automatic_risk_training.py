@@ -35,6 +35,7 @@ RECORDS_PATH = DATA_DIR / "risk_training_records.jsonl"
 MODEL_PATH = BASE_DIR / "risk_random_forest.joblib"
 FIREBASE_BASE = "https://smart-spectacle-47402-default-rtdb.firebaseio.com/devices/Prachi-spectacles-001/"
 LABELS_URL = FIREBASE_BASE + "risk_training/reviewed_labels.json"
+SAMPLES_URL = FIREBASE_BASE + "risk_training/samples/"
 STATUS_URL = FIREBASE_BASE + "risk_training/status.json"
 SENSORS = ("uv", "gas", "light", "distance")
 FEATURE_ORDER = list(SENSORS) + [f"{key}_baseline" for key in SENSORS]
@@ -264,6 +265,14 @@ def training_status(records: list[dict], labels: dict[str, str]) -> dict:
 def update_pipeline(readings: dict, baselines: dict, eligible: bool,
                     exclusion_reasons: list[str]) -> dict:
     latest = collect_record(readings, baselines, eligible, exclusion_reasons)
+    # Publish only eligible samples to the review queue; the full local log retains exclusions.
+    if latest.get("eligibleForRiskTraining") is True:
+        try:
+            firebase_put(SAMPLES_URL + str(latest["sampleId"]) + ".json", latest)
+            latest["samplePublished"] = True
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+            latest["samplePublished"] = False
+            latest["samplePublishError"] = str(error)
     records = read_records()
     labels = reviewed_labels()
     # Persist reviewed annotations for auditability; do not synthesize labels.
