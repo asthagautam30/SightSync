@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+// Lightweight per-process throttling; deployments should also configure platform-level rate limits.
+const requestWindows = new Map<string, { start: number; count: number }>();
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT = 12;
+
 type Input = {
   totalReadings?: number;
   warningReadings?: number;
@@ -39,6 +44,23 @@ function fallbackAdvice(input: Input): string[] {
 }
 
 export async function POST(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const clientKey = forwardedFor || request.headers.get("x-real-ip") || "unknown";
+  const now = Date.now();
+  const window = requestWindows.get(clientKey);
+  if (!window || now - window.start >= RATE_WINDOW_MS) {
+    requestWindows.set(clientKey, { start: now, count: 1 });
+  } else if (window.count >= RATE_LIMIT) {
+    return NextResponse.json({ error: "Too many recommendation requests. Please try again shortly." }, { status: 429 });
+  } else {
+    window.count += 1;
+  }
+  if (requestWindows.size > 1000) {
+    for (const [key, value] of requestWindows) {
+      if (now - value.start >= RATE_WINDOW_MS) requestWindows.delete(key);
+    }
+  }
+
   let input: Input;
   try {
     input = await request.json() as Input;
