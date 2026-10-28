@@ -176,6 +176,16 @@ const panelStyle: React.CSSProperties = {
   boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
 };
 
+const dropdownStyle: React.CSSProperties = {
+  background: "#0b1729",
+  color: colors.text,
+  border: `1px solid ${colors.cardBorder}`,
+  borderRadius: "10px",
+  padding: "10px 12px",
+  fontSize: "13px",
+  maxWidth: "100%",
+};
+
 const buttonStyle: React.CSSProperties = {
   padding: "10px 16px",
   cursor: "pointer",
@@ -266,7 +276,7 @@ export default function HistoryPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const [range, setRange] = useState<RangeOption>("1h");
+  const [range, setRange] = useState<RangeOption>("current");
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState("");
