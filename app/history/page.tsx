@@ -31,7 +31,7 @@ import { db, realtimeDb } from "@/lib/firebase";
 import { SENSOR_THRESHOLDS } from "@/lib/sensor-thresholds";
 
 type SensorKey = "uv" | "gas" | "light" | "distance";
-type RangeOption = "1h" | "24h" | "7d";
+type RangeOption = "current" | "week" | "month";
 type ThresholdMode = "default" | "custom";
 type ComfortRange = "current" | "week" | "month";
 type DailyUsage = {
@@ -102,9 +102,9 @@ const RANGE_OPTIONS: {
   label: string;
   value: RangeOption;
 }[] = [
-  { label: "Last hour", value: "1h" },
-  { label: "Last 24 hours", value: "24h" },
-  { label: "Last 7 days", value: "7d" },
+  { label: "Current (Today)", value: "current" },
+  { label: "Last Week", value: "week" },
+  { label: "Last Month", value: "month" },
 ];
 // UV, gas, light, and distance readings are shown in sensor history charts.
 // Visual Comfort data is displayed separately below.
@@ -187,10 +187,12 @@ const buttonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-function getDuration(range: RangeOption): number {
-  if (range === "1h") return 60 * 60 * 1000;
-  if (range === "24h") return 24 * 60 * 60 * 1000;
-  return 7 * 24 * 60 * 60 * 1000;
+function getRangeStart(range: RangeOption, endTime: number): number {
+  const start = new Date(endTime);
+  start.setHours(0, 0, 0, 0);
+  const daysBack = range === "current" ? 0 : range === "week" ? 6 : 29;
+  start.setDate(start.getDate() - daysBack);
+  return start.getTime();
 }
 
 function isValidNumber(value: unknown): value is number {
@@ -549,7 +551,7 @@ export default function HistoryPage() {
     setLoadingHistory(true);
     setError("");
 
-    const windowStart = windowEnd - getDuration(range);
+    const windowStart = getRangeStart(range, windowEnd);
 
     const historyRef = collection(
       db,
@@ -613,7 +615,7 @@ export default function HistoryPage() {
     );
   }
 
-  const windowStart = windowEnd - getDuration(range);
+  const windowStart = getRangeStart(range, windowEnd);
 
   const chartData: ChartPoint[] = readings
     .filter(
@@ -900,11 +902,11 @@ export default function HistoryPage() {
 
             <p style={{ color: colors.cyan, fontSize: "13px" }}>
               Showing data for{" "}
-              {range === "1h"
-                ? "the last hour"
-                : range === "24h"
-                  ? "the last 24 hours"
-                  : "the last 7 days"}
+              {range === "current"
+                ? "today"
+                : range === "week"
+                  ? "the last 7 calendar days"
+                  : "the last 30 calendar days"}
             </p>
           </div>
 
@@ -1083,16 +1085,10 @@ export default function HistoryPage() {
                               new Date(Number(value)).toLocaleString(
                                 "en-IN",
                                 {
-                                  month:
-                                    range === "7d"
-                                      ? "short"
-                                      : undefined,
-                                  day:
-                                    range === "7d"
-                                      ? "numeric"
-                                      : undefined,
-                                  hour: "2-digit",
-                                  minute: "2-digit",
+                                  month: range === "current" ? undefined : "short",
+                                  day: range === "current" ? undefined : "numeric",
+                                  hour: range === "current" ? "2-digit" : undefined,
+                                  minute: range === "current" ? "2-digit" : undefined,
                                 }
                               )
                             }
