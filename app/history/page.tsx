@@ -33,6 +33,12 @@ import { SENSOR_THRESHOLDS } from "@/lib/sensor-thresholds";
 type SensorKey = "uv" | "gas" | "light" | "distance";
 type RangeOption = "1h" | "24h" | "7d";
 type ThresholdMode = "default" | "custom";
+type ComfortRange = "current" | "week" | "month";
+type DailyUsage = {
+  mobileSeconds: number;
+  laptopSeconds: number;
+  bookSeconds: number;
+};
 
 type ThresholdValues = Record<SensorKey, number>;
 
@@ -191,6 +197,43 @@ function isValidNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+const ZERO_USAGE: DailyUsage = {
+  mobileSeconds: 0,
+  laptopSeconds: 0,
+  bookSeconds: 0,
+};
+
+function formatDuration(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+  return hours > 0
+    ? `${hours}h ${minutes}m`
+    : minutes > 0
+      ? `${minutes}m ${seconds}s`
+      : `${seconds}s`;
+}
+
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function readUsageSeconds(value: unknown): number {
+  const parsed = typeof value === "number" || typeof value === "string"
+    ? Number(value)
+    : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function normalizeTimestamp(value: unknown): number | null {
+  if (!isValidNumber(value) || value <= 0) return null;
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
 function validThreshold(
   value: unknown,
   fallback: number
@@ -229,6 +272,10 @@ export default function HistoryPage() {
   const [currentDevice, setCurrentDevice] = useState<CurrentDeviceData | null>(null);
   const [visualHistory, setVisualHistory] = useState<VisualComfortRecord[]>([]);
   const [recordingError, setRecordingError] = useState("");
+  const [comfortRange, setComfortRange] = useState<ComfortRange>("current");
+  const [visualUsage, setVisualUsage] = useState<DailyUsage>(ZERO_USAGE);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageError, setUsageError] = useState("");
   const lastSavedBucket = useRef<number | null>(null);
 
   const [thresholdMode, setThresholdMode] =
@@ -327,6 +374,76 @@ export default function HistoryPage() {
       cancelled = true;
     };
   }, [user, loading]);
+
+  // Read daily Visual Comfort usage totals from the RTDB path used by the
+  // supplied Sensor History page. Missing daily records are treated as no
+  // recorded usage; no synthetic usage is created.
+  useEffect(() => {
+    if (loading || !user) return;
+
+    let cancelled = false;
+
+    async function loadVisualUsage() {
+      setUsageLoading(true);
+      try {
+        const now = new Date();
+        const days = comfortRange === "current" ? 1 : comfortRange === "week" ? 7 : 30;
+        const keys: string[] = [];
+
+        for (let index = 0; index < days; index += 1) {
+          const date = new Date(now);
+          date.setHours(0, 0, 0, 0);
+          date.setDate(date.getDate() - index);
+          keys.push(getLocalDateKey(date));
+        }
+
+        const records = await Promise.all(
+          keys.map(async (key) => {
+            const response = await fetch(
+              `https://smart-spectacle-47402-default-rtdb.firebaseio.com/devices/${DEVICE_ID}/visualUsage/${key}.json`,
+              { cache: "no-store" }
+            );
+            if (!response.ok) {
+              throw new Error(`Visual usage request failed (${response.status}).`);
+            }
+            return response.json() as Promise<unknown>;
+          })
+        );
+
+        const totals: DailyUsage = { ...ZERO_USAGE };
+        for (const record of records) {
+          if (!record || typeof record !== "object") continue;
+          const usage = record as Record<string, unknown>;
+          totals.mobileSeconds += readUsageSeconds(usage.mobileSeconds);
+          totals.laptopSeconds += readUsageSeconds(usage.laptopSeconds);
+          totals.bookSeconds += readUsageSeconds(usage.bookSeconds);
+        }
+
+        if (!cancelled) {
+          setVisualUsage(totals);
+          setUsageError("");
+        }
+      } catch (err) {
+        console.error("Failed to load Visual Comfort usage:", err);
+        if (!cancelled) {
+          setUsageError(
+            err instanceof Error
+              ? err.message
+              : "Could not load Visual Comfort usage."
+          );
+        }
+      } finally {
+        if (!cancelled) setUsageLoading(false);
+      }
+    }
+
+    void loadVisualUsage();
+    const timer = window.setInterval(() => void loadVisualUsage(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loading, user, comfortRange]);
 
   // Read the device's live RTDB payload and persist a timestamped snapshot
   // for the signed-in user every 10 seconds. Stable document IDs prevent
@@ -576,6 +693,85 @@ export default function HistoryPage() {
             </button>
           </div>
         </header>
+
+        {(() => {
+          const lastSeen = normalizeTimestamp(currentDevice?.lastSeen ?? currentDevice?.timestamp);
+          const age = lastSeen === null ? null : Date.now() - lastSeen;
+          const sourceActive = age !== null && age >= 0 && age <= 15_000;
+          return (
+            <section style={{ ...panelStyle, marginTop: 0, padding: "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: "0 0 6px", fontSize: "17px" }}>Sensor Source Status</h2>
+                  <p style={{ margin: 0, color: colors.muted, fontSize: "13px" }}>
+                    {lastSeen === null
+                      ? "Waiting for a valid sensor timestamp."
+                      : sourceActive
+                        ? "Recent sensor data is being received."
+                        : "No fresh sensor timestamp has been received in the last 15 seconds."}
+                  </p>
+                </div>
+                <span style={{
+                  padding: "8px 12px",
+                  borderRadius: "999px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: sourceActive ? "#86efac" : "#fca5a5",
+                  background: sourceActive ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                  border: `1px solid ${sourceActive ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+                }}>
+                  {sourceActive ? "● ACTIVE" : "● INACTIVE / UNKNOWN"}
+                </span>
+              </div>
+            </section>
+          );
+        })()}
+
+        <section style={panelStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "20px" }}>Visual Comfort Usage</h2>
+              <p style={{ color: colors.muted, fontSize: "13px", margin: "6px 0 0" }}>
+                Recorded mobile, laptop and book viewing duration.
+              </p>
+            </div>
+            <select
+              aria-label="Visual Comfort usage time range"
+              value={comfortRange}
+              onChange={(event) => setComfortRange(event.target.value as ComfortRange)}
+              style={dropdownStyle}
+            >
+              <option value="current">Today</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+            </select>
+          </div>
+          {usageError && (
+            <p role="alert" style={{ color: "#fecaca", background: "#29151b", border: "1px solid #7f1d1d", padding: "10px 12px", borderRadius: "10px" }}>
+              {usageError}
+            </p>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "12px" }}>
+            {([
+              ["Mobile", visualUsage.mobileSeconds],
+              ["Laptop", visualUsage.laptopSeconds],
+              ["Book", visualUsage.bookSeconds],
+            ] as const).map(([label, seconds]) => (
+              <div key={label} style={{ padding: "16px", borderRadius: "12px", background: "#102239", border: `1px solid ${colors.cardBorder}` }}>
+                <p style={{ margin: "0 0 8px", color: colors.muted, fontSize: "12px" }}>{label}</p>
+                <strong style={{ fontSize: "22px" }}>
+                  {usageLoading ? "Loading..." : formatDuration(seconds)}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {!usageLoading && !usageError &&
+            visualUsage.mobileSeconds + visualUsage.laptopSeconds + visualUsage.bookSeconds === 0 && (
+              <p style={{ color: colors.muted, fontSize: "12px", marginBottom: 0 }}>
+                No usage totals are recorded for this period yet. This section will show totals when daily visualUsage records exist in Realtime Database.
+              </p>
+            )}
+        </section>
 
         {/* Live Visual Comfort dashboard; values are read from Firebase, not demo data. */}
         <section style={{ ...panelStyle, marginTop: 0, padding: "clamp(16px, 2.5vw, 24px)" }}>
