@@ -128,6 +128,13 @@ def main():
             latest_results = {}
             all_sensors_learning_eligible = True
             learning_blockers = []
+            # Predict once for the complete sensor combination before any engine
+            # receives this polling cycle's reading.
+            anomaly_assessment = detect_anomaly(data)
+            anomaly_detected = anomaly_assessment.get("anomaly") is True
+            if anomaly_detected:
+                all_sensors_learning_eligible = False
+                learning_blockers.append("Isolation Forest: unusual sensor combination detected")
 
             for sensor in SENSOR_KEYS:
                 reading = data.get(sensor)
@@ -152,6 +159,7 @@ def main():
                     learning_blockers.append(f"{sensor}: reading crosses the current adaptive warning threshold")
                 result = engine.observe(
                     reading_value,
+                    anomalous=(anomaly_detected and not (fixed_warning or adaptive_warning)),
                     hazardous=(fixed_warning or adaptive_warning),
                 )
                 if result["baselineEstablished"]:
@@ -196,7 +204,8 @@ def main():
                 training_result = observe_normal_reading(
                     data,
                     eligible_for_learning=(
-                        all_sensors_learning_eligible
+                        not anomaly_detected
+                        and all_sensors_learning_eligible
                         and len(latest_results) == len(SENSOR_KEYS)
                         and all(
                             latest_results.get(sensor, {}).get("baselineEstablished") is True
@@ -208,7 +217,8 @@ def main():
                     data,
                     baselines,
                     eligible=(
-                        all_sensors_learning_eligible
+                        not anomaly_detected
+                        and all_sensors_learning_eligible
                         and len(latest_results) == len(SENSOR_KEYS)
                         and all(
                             latest_results.get(sensor, {}).get("baselineEstablished") is True
@@ -227,10 +237,10 @@ def main():
                     "message": risk_training_status.get("message", ""),
                     "validatedForRealWorldUse": False,
                 }
-                anomaly_assessment = detect_anomaly(data)
                 anomaly_assessment["riskModelTraining"] = risk_training_status
                 training_result["eligible"] = bool(
-                    all_sensors_learning_eligible
+                    not anomaly_detected
+                    and all_sensors_learning_eligible
                     and len(latest_results) == len(SENSOR_KEYS)
                     and all(
                         latest_results.get(sensor, {}).get("baselineEstablished") is True
